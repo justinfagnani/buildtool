@@ -27,7 +27,7 @@ main() {
     builder = new Builder(outPath, genPath);
 
     // this is what a build.dart file would contain
-    addTask([".*\.html"], task);
+    addTask(["**/*.html"], task);
     buildWithArgs(["--changed=$testPath"]).then(expectAsync1((s) {
       // check output and gen directories
       expect(new Directory.fromPath(outPath).existsSync(), true);

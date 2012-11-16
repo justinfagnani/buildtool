@@ -25,7 +25,7 @@ main() {
     var task = new MockTask();
     
     var builder = new Builder(outPath, genPath);
-    builder.addTask([".*\.html"], task);
+    builder.addTask(["**/*.html"], task);
     
     builder.build([testPath.toString()], [], true).then(expectAsync1((s) {
       // check output and gen directories

@@ -111,11 +111,11 @@ class Builder {
 class _TaskEntry {
   final List<String> files;
   final Task task;
-  final List<RegExp> patterns;
+  List<Glob> patterns;
   
-  _TaskEntry(files, this.task) 
-      : files = files, 
-        patterns = files.map((f) => new RegExp(f));
+  _TaskEntry(this.files, this.task) {
+    patterns = files.map((f) => new Glob(f));
+  }
   
   bool matches(String filename) => patterns.some((p) => p.hasMatch(filename));
 }

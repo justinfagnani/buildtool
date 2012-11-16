@@ -38,6 +38,7 @@ library buildtool;
 import 'dart:io';
 import 'package:args/args.dart';
 import 'package:logging/logging.dart';
+import 'package:buildtool/glob.dart';
 
 part 'src/builder.dart';
 part 'src/symlink.dart';
