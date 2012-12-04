@@ -5,7 +5,7 @@
 library mock_task;
 
 import 'dart:io';
-import 'package:buildtool/buildtool.dart';
+import 'package:buildtool/task.dart';
 
 class MockTask implements Task {
   List<Path> files;

@@ -5,6 +5,7 @@
 library dwc_task;
 
 import 'dart:io';
+import 'package:buildtool/task.dart';
 import 'package:buildtool/buildtool.dart';
 import 'package:web_components/dwc.dart' as dwc;
 

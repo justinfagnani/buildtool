@@ -6,7 +6,7 @@ library builder_test;
 
 import 'dart:io';
 import 'package:unittest/unittest.dart';
-import 'package:buildtool/buildtool.dart';
+import 'package:buildtool/src/builder.dart';
 import 'mock_task.dart';
 
 main() {

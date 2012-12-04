@@ -8,14 +8,18 @@
  * 
  * ## Usage ##
  * 
- * Call [addTask] with a list of regexs for matching file names and a task to
- * run when files matching the regex change.
+ * Builds are configured by adding a set of tasks, and the files they should be
+ * run against, in a closure provided to [configure].
+ * 
+ * To add a task, call [addTask] with a list of regexs for matching file names
+ * and a task to run when files matching the regex change.
  * 
  * Example:
  * 
  *     main() {
- *       addTask([".*\.html"], new WebComponentsTask());
- *       buildWithArgs(new Options().arguments);
+ *       configure(() {
+ *         addTask([".*\.html"], new WebComponentsTask());
+ *       });
  *     }
  * 
  * For convenience, we recommend that developers providing tasks for their
@@ -25,9 +29,26 @@
  *     import 'package:buildtool/web_components.dart';
  *     
  *     main() {
- *       webComponents(files: [".*\.html"]);
- *       buildWithArgs(new Options().arguments);
+ *       configure(() {
+ *         webComponents(files: [".*\.html"]);
+ *       });
  *     }
+ * 
+ * ## Client / Server Architecture ##
+ * 
+ * buildtool starts a seperate Dart process to run the build. This is done to
+ * reduce startup times, allow the VM to warm up hot code in tasks, and to
+ * preserve dependency information in memory.
+ * 
+ * The `server` flag controls whether buildtool is running as a server, or as a
+ * client.
+ * 
+ * When executed as a client, without the `server` flag, the script looks for a
+ * running buildtool server by reading the `.buildlock` file. If it can't find
+ * running server, it starts one.
+ * 
+ * When running as a server, an HTTP server is started which listens for build
+ * commands via a JSON-based protocol.
  * 
  * ## Warning ##
  * 
@@ -36,78 +57,63 @@
 library buildtool;
 
 import 'dart:io';
+import 'dart:json';
 import 'package:args/args.dart';
 import 'package:logging/logging.dart';
 import 'package:buildtool/glob.dart';
+import 'package:buildtool/src/client.dart';
+import 'package:buildtool/src/server.dart';
+import 'package:buildtool/task.dart';
 
-part 'src/builder.dart';
-part 'src/symlink.dart';
-
-final Logger _logger = new Logger("buildtool");
-
-Builder builder = new Builder(new Path('out'), new Path('packages/gen'));
-
-/** A runnable build task */
-abstract class Task {
-  
-  /** 
-   * Called to run the task.
-   * 
-   * [files] contains a list of changed paths, not necessarily all files
-   * covered by this task in the project [outDir] is where final build
-   * artifacts must be written to, [genDir] is where generated files that can
-   * be referenced by code should be written to.
-   */
-  Future<TaskResult> run(List<Path> files, Path outDir, Path genDir);
-}
-
-class TaskResult {
-  final bool succeeded;
-  final List<Path> outputs;
-  final List<String> messages;
-  TaskResult(this.succeeded, this.outputs, this.messages);
-  String toString() => "#<TaskResult succeeded: $succeeded outs: $outputs>";
-}
+bool _isServer;
+var _args;
+bool _inConfigure = false;
 
 /**
- * Adds a new [Task] to this build which is run when files
- * match against the regex patterns in [files].
- */
-void addTask(List<String> files, Task task) => builder.addTask(files, task);
-
-/**
- * Runs the build.
+ * Adds a new [Task] to this build which is run when files match against the
+ * regex patterns in [files].
  * 
- * [arguments] is a list of Strings compatible with the command line arguments
- * passed to the build.dart file by the Dart Editor, including:
- *  - --changed: the file has changed since the last build
- *  - --removed: the file was removed since the last build
- *  - clean: remove any build artifacts
+ * [addTask] can only be called from within the closure passed to [configure].
  */
-Future buildWithArgs(List<String> arguments) {
-  var args = _processArgs(arguments);
+void addTask(List<String> files, Task task) {
+  if (!_inConfigure) {
+    throw new StateError("addTask must be called inside a configure() call.");
+  }
+  builder.addTask(files, task);
+}
 
-  var trackDirs = <Directory>[];
-  var changedFiles = args["changed"];
-  var removedFiles = args["removed"];
-  var cleanBuild = args["clean"];
-    
-  return builder.build(changedFiles, removedFiles, cleanBuild);
+/**
+ * Configures the build. In [configClosure], [addTask] can be called to add
+ * tasks to the build.
+ * 
+ * [forceServer] is for debug and development purposes.
+ */
+void configure(void configClosure(), {bool forceServer: false}) {
+  _processArgs(forceServer);
+  if (_isServer == true) {
+    _inConfigure = true;
+    configClosure();
+    _inConfigure = false;
+    serverMain();
+  } else {
+    clientMain(_args);
+  }
 }
 
 /** Handle --changed, --removed, --clean and --help command-line args. */
-ArgResults _processArgs(List<String> arguments) {
+void _processArgs(bool forceServer) {
   var parser = new ArgParser()
+    ..addFlag("server", help: "run build tool as a long-runing server")
     ..addOption("changed", help: "the file has changed since the last build",
         allowMultiple: true)
     ..addOption("removed", help: "the file was removed since the last build",
         allowMultiple: true)
     ..addFlag("clean", negatable: false, help: "remove any build artifacts")
     ..addFlag("help", negatable: false, help: "displays this help and exit");
-  var args = parser.parse(arguments);
-  if (args["help"]) {
+  _args = parser.parse(new Options().arguments);
+  _isServer = forceServer || _args['server'];
+  if (_args["help"]) {
     print(parser.getUsage());
     exit(0);
   }
-  return args;
 }
