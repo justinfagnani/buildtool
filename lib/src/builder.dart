@@ -69,7 +69,6 @@ class Builder {
       });
   }
   
-  
   /** Creates the output and gen directories */
   Future _createDirs() => 
       Futures.wait([_createBuildDir(outDir), _createGenDir(genDir)]);

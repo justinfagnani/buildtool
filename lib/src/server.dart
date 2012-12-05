@@ -31,7 +31,7 @@ serverMain() {
     _writeLockFile(serverSocket.port).then((int port) {
       stdout.writeString("buildtool server ready\n");
       stdout.writeString("port: ${port}\n");
-      stdout.close();
+      stdout.flush();
       if (port != serverSocket.port) {
         _logger.info("Another server already running on port $port.");
         exit(0);
@@ -50,16 +50,22 @@ void _buildHandler(HttpRequest req, HttpResponse res) {
 }
 
 void _closeHandler(HttpRequest req, HttpResponse res) {
+  print("closing server... ");
   Futures.wait([_deleteLockFile(), _closeLogFile()]).then((_) {
-    res.contentLength = 0;
+    var str = JSON.stringify({'status': 'CLOSED'});
+    res.contentLength = str.length;
+    res.headers.contentType = JSON_TYPE;
+    res.outputStream.writeString(str);
+    res.outputStream.onClosed = () {
+      print("closed");
+      exit(0);
+    };
     res.outputStream.close();
-    exit(0);
   });
 }
 
 void _statusHandler(HttpRequest req, HttpResponse res) {
-  var data = {'status': 'OK'};
-  var str = JSON.stringify(data);
+  var str = JSON.stringify({'status': 'OK'});
   res.contentLength = str.length;
   res.headers.contentType = JSON_TYPE;
   res.outputStream.writeString(str);
@@ -124,7 +130,7 @@ Future _deleteLockFile() {
   return new File(BUILDLOCK_FILE).delete();
 }
 
-var _logStream;
+OutputStream _logStream;
 
 Future _createLogFile() {
   return new File(BUILDLOG_FILE).create().transform((log) {
@@ -140,7 +146,10 @@ Future _createLogFile() {
 
 Future _closeLogFile() {
   if (_logStream != null) {
-    return _logStream.close();
+    var completer = new Completer();
+    _logStream.close();
+    _logStream.onClosed = () => completer.complete(null);
+    return completer.future;
   } else {
     return new Future.immediate(null);
   }
