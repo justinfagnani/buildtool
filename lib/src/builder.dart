@@ -7,7 +7,9 @@ library builder;
 
 import 'dart:io';
 import 'package:buildtool/glob.dart';
+import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/symlink.dart';
+import 'package:buildtool/src/utils.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
 
@@ -42,11 +44,7 @@ class Builder {
       List<String> removedFiles,
       bool cleanBuild) {
     
-    _logger.info("Starting build...");
-    
-    // ignore inputs in the ouput dir that the Editor forwards
-    var filteredFiles = 
-        changedFiles.filter((f) => !f.startsWith(outDir.toString()));
+    _logger.info("starting build");
     
     var initTasks = [];
     if (cleanBuild) {
@@ -55,6 +53,13 @@ class Builder {
     return Futures.wait(initTasks)
       .chain((_) => _createDirs())
       .chain((_) {
+        return (changedFiles.isEmpty)
+            // TODO(justinfagnani): Consider using file patterns in tasks to
+            // pull in less files.
+            ? _getAllFiles()
+            : new Future.immediate(changedFiles.filter(isValidInputFile));
+      })
+      .chain((List<String> filteredFiles) {
         var futures = [];
         for (var entry in _tasks) { // TODO: parallelize
           var matches = filteredFiles.filter(entry.matches);
@@ -86,6 +91,8 @@ class Builder {
           removeBrokenDirSymlink(linkPath);
           var targetPath = new File('packages').fullPathSync();
           return createSymlink(targetPath, linkPath);
+        } else {
+          return new Future.immediate(null);
         }
       });
     });
@@ -107,6 +114,27 @@ class Builder {
         (exists)
             ? dir.delete(recursive: true).transform((_) => true)
             : new Future.immediate(false));
+  }
+  
+  Future<List<String>> _getAllFiles() {
+    var cwd = new Directory.current().path;
+    var futureGroup = new FutureGroup();
+    var files = <String>[];
+    onDir(String dir) {
+      if (!dir.endsWith("packages")) {
+        var completer = new Completer();
+        futureGroup.add(completer.future);
+        new Directory(dir).list()
+        ..onFile = (file) { files.add(file.substring(cwd.length + 1)); }
+        ..onDir = onDir
+        ..onDone = (s) { completer.complete(null); }
+        ..onError = (e) { completer.completeException(e); };
+       }
+     }
+    onDir('web');
+    onDir('lib');
+    onDir('bin');
+    return futureGroup.future.transform((_) => files);
   }
 }
 

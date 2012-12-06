@@ -27,9 +27,8 @@ void clientMain(ArgResults args) {
     });
   } else {
     var changedFiles = args['changed'];
-    var filteredFiles = changedFiles.filter((f) => 
-        !(f.startsWith('out') || f == '.buildlog' || f == '.buildlock'));
-    if (filteredFiles.isEmpty) {
+    var filteredFiles = changedFiles.filter(isValidInputFile);
+    if (args['machine'] && filteredFiles.isEmpty) {
       print("no changed files");
       exit(0);
     }

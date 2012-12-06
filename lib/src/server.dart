@@ -41,35 +41,57 @@ serverMain() {
 }
 
 void _buildHandler(HttpRequest req, HttpResponse res) {
-  readStreamAsString(req.inputStream).then((str) {
+  readStreamAsString(req.inputStream)
+  ..handleException((e) {
+    _logger.severe("error: $e");
+    _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+    return true;
+  })
+  ..then((str) {
     var data = JSON.parse(str);
-    builder.build(data['changed'], data['removed'], data['clean']);
-    res.contentLength = 0;
-    res.outputStream.close();    
+    builder.build(data['changed'], data['removed'], data['clean'])
+      ..handleException((e) {
+        _logger.severe("error: $e");
+        _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+        return true;
+      })
+      ..then((s) {
+        _jsonReply(res, {'status': 'OK'});
+      });
   });
 }
 
 void _closeHandler(HttpRequest req, HttpResponse res) {
   print("closing server... ");
-  Futures.wait([_deleteLockFile(), _closeLogFile()]).then((_) {
-    var str = JSON.stringify({'status': 'CLOSED'});
-    res.contentLength = str.length;
-    res.headers.contentType = JSON_TYPE;
-    res.outputStream.writeString(str);
-    res.outputStream.onClosed = () {
-      print("closed");
-      exit(0);
-    };
-    res.outputStream.close();
-  });
+  Futures.wait([_deleteLockFile(), _closeLogFile()])
+    ..handleException((e) {
+      res.outputStream.onClosed = () {
+        print("closed");
+        exit(0);
+      };
+      _logger.severe("error: $e");
+      _jsonReply(res, {'status': 'CLOSED', 'error': "$e"});
+      return true;
+    })
+    ..then((_) {
+      res.outputStream.onClosed = () {
+        print("closed");
+        exit(0);
+      };
+      _jsonReply(res, {'status': 'CLOSED'});
+    });
 }
 
 void _statusHandler(HttpRequest req, HttpResponse res) {
-  var str = JSON.stringify({'status': 'OK'});
+  _jsonReply(res, {'status': 'OK'});
+}
+
+void _jsonReply(HttpResponse res, var data) {
+  var str = JSON.stringify(data);
   res.contentLength = str.length;
   res.headers.contentType = JSON_TYPE;
   res.outputStream.writeString(str);
-  res.outputStream.close();    
+  res.outputStream.close();
 }
 
 /** 
@@ -138,7 +160,8 @@ Future _createLogFile() {
     Logger.root.on.record.add((LogRecord r) {
       var m = "${r.time} ${r.level} ${r.message}\n";
       _logStream.writeString(m);
-      print(m);
+      stdout.writeString(m);
+      stdout.flush();
     });
     return true;
   });

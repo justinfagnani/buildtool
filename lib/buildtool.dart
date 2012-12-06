@@ -103,12 +103,15 @@ void configure(void configClosure(), {bool forceServer: false}) {
 /** Handle --changed, --removed, --clean and --help command-line args. */
 void _processArgs(bool forceServer) {
   var parser = new ArgParser()
-    ..addFlag("server", help: "run build tool as a long-runing server")
+    ..addFlag("server", help: "run buildtool as a long-running server")
     ..addOption("changed", help: "the file has changed since the last build",
         allowMultiple: true)
     ..addOption("removed", help: "the file was removed since the last build",
         allowMultiple: true)
     ..addFlag("clean", negatable: false, help: "remove any build artifacts")
+    ..addFlag("machine", negatable: false, 
+        help: "print machine parseable messages," 
+              "used by tools like the Dart editor")
     ..addFlag("quit", negatable: false, help: "quit the build server")
     ..addFlag("help", negatable: false, help: "displays this help and exit");
   _args = parser.parse(new Options().arguments);
