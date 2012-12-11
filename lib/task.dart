@@ -22,8 +22,12 @@ abstract class Task {
 
 class TaskResult {
   final bool succeeded;
-  final List<Path> outputs;
+  final List<String> outputs;
+  final Map<String, String> mappings;
   final List<String> messages;
-  TaskResult(this.succeeded, this.outputs, this.messages);
-  String toString() => "#<TaskResult succeeded: $succeeded outs: $outputs>";
+  
+  TaskResult(this.succeeded, this.outputs, this.mappings, this.messages);
+  
+  String toString() => "#<TaskResult succeeded: $succeeded outs: $outputs> "
+      "mappings: $mappings";
 }

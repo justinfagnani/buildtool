@@ -55,8 +55,15 @@ void _buildHandler(HttpRequest req, HttpResponse res) {
         _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
         return true;
       })
-      ..then((s) {
-        _jsonReply(res, {'status': 'OK'});
+      ..then((result) {
+        var mappings = [];
+        for (var source in result.mappings.keys) {
+          mappings.add({'from': source, 'to': result.mappings[source]});
+        }
+        _jsonReply(res, {
+          'status': 'OK',
+          'messages': result.messages,
+          'mappings': mappings});
       });
   });
 }

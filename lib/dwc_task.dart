@@ -7,7 +7,7 @@ library dwc_task;
 import 'dart:io';
 import 'package:buildtool/task.dart';
 import 'package:buildtool/buildtool.dart';
-import 'package:web_components/dwc.dart' as dwc;
+import 'package:web_ui/dwc.dart' as dwc;
 
 void compileWebComponents({String name, List<String> files}) =>
     addTask(files, new DwcTask());
@@ -23,9 +23,16 @@ class DwcTask extends Task {
     }
     return Futures.wait(futures).transform((_) {
       List<dwc.CompilerResult> results = futures.map((f) => f.value);
+      var mappings = new Map<String, String>();
+      for (var result in results) {
+        for (var mappingSource in result.mappings.keys) {
+          mappings[mappingSource] = result.mappings[mappingSource];
+        }
+      }
       return new TaskResult(
           results.every((r) => r.success), 
-          _flatMap(results, (result) => result.outputs.map((f) => new Path(f))),
+          _flatMap(results, (result) => result.outputs),
+          mappings,
           _flatMap(results, (result) => result.messages));
     });
   }

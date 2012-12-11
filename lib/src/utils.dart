@@ -5,7 +5,7 @@
 library utils;
 
 import 'dart:io';
-export 'package:web_components/src/utils.dart' show FutureGroup;
+export 'package:web_ui/src/utils.dart' show FutureGroup;
 
 Future<String> readStreamAsString(InputStream stream) {
   var completer = new Completer();

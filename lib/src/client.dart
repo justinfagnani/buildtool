@@ -4,24 +4,27 @@
 
 library client;
 
+import 'dart:io';
+import 'dart:json';
 import 'package:args/args.dart';
 import 'package:buildtool/buildtool.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/utils.dart';
-import 'dart:io';
-import 'dart:json';
+import 'package:logging/logging.dart';
+
+Logger _logger = new Logger('client');
 
 void clientMain(ArgResults args) {
   var quit = args['quit'];
   if (quit == true) {
-    print("quitting server");
+    _logger.fine("quitting server");
     _getServerPort().then((port) {
       if (port != null) {
         _sendCloseCommand(port).then((s) {
           exit(0);
         });
       } else {
-        print("no server to quit");
+        _logger.severe("no server to quit");
         exit(0);
       }
     });
@@ -29,14 +32,29 @@ void clientMain(ArgResults args) {
     var changedFiles = args['changed'];
     var filteredFiles = changedFiles.filter(isValidInputFile);
     if (args['machine'] && filteredFiles.isEmpty) {
-      print("no changed files");
+      _logger.info("no changed files");
       exit(0);
     }
     _getServerPort().then((port) {
       if (port != null) {
-        _sendBuildCommand(port, filteredFiles, args['clean']);
+        _sendBuildCommand(port, filteredFiles, args['clean'])
+          .then((Map result) {
+            List<Map<String, String>> mappingList = result['mappings'];
+            for (var mapping in mappingList) {
+              var message = JSON.stringify([{
+                'method': 'mapping',
+                'params': {
+                  'from': mapping['from'],
+                  'to': mapping['to'],
+                },
+              }]);
+              // write message for the Editor to receive
+              stdout.writeString("$message\n");
+            }
+            exit(0);
+          });
       } else {
-        print("Error starting buildtool server.");
+        _logger.severe("Error starting buildtool server.");
         exit(1);
       }
     });
@@ -50,7 +68,10 @@ Future _sendCloseCommand(int port) {
 }
 
 /** Sends a JSON-formatted build command to the build server via HTTP POST. */
-Future _sendBuildCommand(int port, List<String> changedFiles, bool cleanBuild) {
+Future<Map> _sendBuildCommand(
+    int port,
+    List<String> changedFiles,
+    bool cleanBuild) {
   return _sendJsonCommand(port, BUILD_URL, data: {
     'changed': changedFiles,
     'removed': [],
@@ -89,19 +110,19 @@ Future _sendJsonCommand(int port, String path, {var data,
         });
     }
     ..onError = (e) {
-      print("error: $e");
+      _logger.severe("error: $e");
       if (e is SocketIOException && 
           e.osError.errorCode == _CONNECTION_REFUSED &&
           !isRetry) {
         //restart server
-        print("restarting server");
+        _logger.fine("restarting server");
         _startServer()
           ..handleException((e) {
             completer.completeException(e);
             return true;
           })
           ..then((port) {
-            print("restarted server on port $port");
+            _logger.fine("restarted server on port $port");
             _sendJsonCommand(port, path, data: data, isRetry: true)
               ..handleException((e) {
                 completer.completeException(e);
@@ -130,7 +151,7 @@ Future<int> _getServerPort() {
         ..onClosed = () {
           try {
             var port = int.parse(sb.toString());
-            print("server already running onport: $port");
+            _logger.fine("server already running onport: $port");
             completer.complete(port);
           } on Error catch (e) {
             completer.completeException(e);
@@ -150,7 +171,7 @@ Future<int> _startServer() {
     var sis = new StringInputStream(process.stdout);
     sis.onData = () {
       var line = sis.readLine();
-      print(line);
+      _logger.fine(line);
       if (line.startsWith("port: ")) {
         var port = int.parse(line.substring("port: ".length));
         completer.complete(port);

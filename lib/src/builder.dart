@@ -39,7 +39,7 @@ class Builder {
    *  
    * TODO(justinfagnani): Currently [removedFiles] are not passed to tasks.
    */
-  Future build(
+  Future<BuildResult> build(
       List<String> changedFiles,
       List<String> removedFiles,
       bool cleanBuild) {
@@ -69,8 +69,17 @@ class Builder {
         return Futures.wait(futures);
       })
       .transform((results) {
-        _logger.info("Build finished");
-        return true;
+        var messages = [];
+        var mappings = new Map<String, String>();
+        for (TaskResult taskResult in results) {
+          messages.addAll(taskResult.messages);
+          for (var source in taskResult.mappings.keys) {
+            mappings[source] = taskResult.mappings[source];
+          }
+        }
+        var result = new BuildResult(messages, mappings);
+        _logger.info("Build finished $results");
+        return result;
       });
   }
   
@@ -120,22 +129,42 @@ class Builder {
     var cwd = new Directory.current().path;
     var futureGroup = new FutureGroup();
     var files = <String>[];
+    var _error = false;
     onDir(String dir) {
-      if (!dir.endsWith("packages")) {
+      if (!_error && !dir.endsWith("packages")) {
         var completer = new Completer();
         futureGroup.add(completer.future);
         new Directory(dir).list()
-        ..onFile = (file) { files.add(file.substring(cwd.length + 1)); }
+        ..onFile = (file) { 
+          if (!_error) files.add(file.substring(cwd.length + 1));
+        }
         ..onDir = onDir
-        ..onDone = (s) { completer.complete(null); }
-        ..onError = (e) { completer.completeException(e); };
+        ..onDone = (s) {
+          if (!_error) completer.complete(null);
+        }
+        ..onError = (e) {
+          _error = true;
+          completer.completeException(e);
+        };
        }
      }
-    onDir('web');
-    onDir('lib');
-    onDir('bin');
+    getFiles(List<String> dirs) {
+      dirs.forEach((dir) {
+        new Directory(dir).exists().then((exists) {
+          if (exists) onDir(dir);
+        });
+      });
+    }
+    getFiles(['web', 'lib', 'bin']);
     return futureGroup.future.transform((_) => files);
   }
+}
+
+class BuildResult {
+  final List<String> messages;
+  final Map<String, String> mappings;
+  
+  BuildResult(this.messages, this.mappings);
 }
 
 class _TaskEntry {

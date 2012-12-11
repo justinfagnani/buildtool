@@ -17,6 +17,6 @@ class MockTask implements Task {
     this.files = files;
     this.outDir = outDir;
     this.genDir = genDir;
-    return new Future.immediate(new TaskResult(true, [], []));
+    return new Future.immediate(new TaskResult(true, [], {}, []));
   }
 }

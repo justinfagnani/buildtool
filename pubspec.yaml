@@ -5,7 +5,7 @@ author: "Dart Team <misc@dartlang.org>"
 homepage: https://github.com/dart-lang/buildtool
 
 dependencies:
-  args: { sdk: args }
-  unittest: { sdk: unittest }
+  args: any
+  unittest: any
   #TODO: make dwc depend on buildtool
   web_components: any
