@@ -14,29 +14,31 @@ import 'package:buildtool/src/utils.dart';
 import 'package:logging/logging.dart';
 
 final Logger _logger = new Logger('server');
-Builder builder = new Builder(new Path('out'), new Path('packages/gen'));
+Builder builder = new Builder(new Path(BUILD_DIR), new Path('packages/gen'));
+
+Future serverSetup() {
+  return _createLogFile();
+}
 
 serverMain() {
-  _createLogFile().then((_) {
-    _logger.info("startServer");
-    var serverSocket = new ServerSocket("127.0.0.1", 0, 0);
-    _logger.info("listening on localhost:${serverSocket.port}");
-    var server = new HttpServer();
-    
-    server.addRequestHandler((req) => req.path == BUILD_URL, _buildHandler);
-    server.addRequestHandler((req) => req.path == CLOSE_URL, _closeHandler);
-    server.addRequestHandler((req) => req.path == STATUS_URL, _statusHandler);
+  _logger.info("startServer");
+  var serverSocket = new ServerSocket("127.0.0.1", 0, 0);
+  _logger.info("listening on localhost:${serverSocket.port}");
+  var server = new HttpServer();
+  
+  server.addRequestHandler((req) => req.path == BUILD_URL, _buildHandler);
+  server.addRequestHandler((req) => req.path == CLOSE_URL, _closeHandler);
+  server.addRequestHandler((req) => req.path == STATUS_URL, _statusHandler);
 
-    server.listenOn(serverSocket);
-    _writeLockFile(serverSocket.port).then((int port) {
-      stdout.writeString("buildtool server ready\n");
-      stdout.writeString("port: ${port}\n");
-      stdout.flush();
-      if (port != serverSocket.port) {
-        _logger.info("Another server already running on port $port.");
-        exit(0);
-      }
-    });
+  server.listenOn(serverSocket);
+  _writeLockFile(serverSocket.port).then((int port) {
+    stdout.writeString("buildtool server ready\n");
+    stdout.writeString("port: ${port}\n");
+    stdout.flush();
+    if (port != serverSocket.port) {
+      _logger.info("Another server already running on port $port.");
+      exit(0);
+    }
   });
 }
 
@@ -164,6 +166,7 @@ OutputStream _logStream;
 Future _createLogFile() {
   return new File(BUILDLOG_FILE).create().transform((log) {
     _logStream = log.openOutputStream(FileMode.APPEND);
+    Logger.root.level = Level.FINE;
     Logger.root.on.record.add((LogRecord r) {
       var m = "${r.time} ${r.level} ${r.message}\n";
       _logStream.writeString(m);

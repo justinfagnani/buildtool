@@ -15,21 +15,32 @@ import 'package:logging/logging.dart';
 
 Logger _logger = new Logger('builder');
 
+/** 
+ * Maximum number of times that the tasks are run on the output of previous
+ * passes.
+ * 
+ * TODO: Base task execution on the dependency graph and disallow cycles.
+ */
+final int MAX_PASSES = 5;
+
 /** A runnable build configuration */
 class Builder {
-  final List<_TaskEntry> _tasks = <_TaskEntry>[];
+  final List<_Rule> _rules = <_Rule>[];
   
-  final Path outDir;
+  final Path buildDir;
   final Path genDir;
   
-  Builder(this.outDir, this.genDir);
+  Builder(this.buildDir, this.genDir);
   
+  Path get outDir => buildDir.append(OUT_DIR);
+
   /**
    * Adds a new [Task] to this builder which is run when files
    * match against the regex patterns in [files].
    */
   void addTask(List<String> files, Task task) {
-    _tasks.add(new _TaskEntry(files, task));
+    _logger.info("adding task ${task} for files $files");
+    _rules.add(new _Rule(files, task));
   }
   
   /** 
@@ -48,47 +59,95 @@ class Builder {
     
     var initTasks = [];
     if (cleanBuild) {
-      initTasks.addAll([_cleanDir(outDir), _cleanDir(genDir)]);
+      initTasks.addAll([_cleanDir(buildDir), _cleanDir(genDir)]);
     }
     return Futures.wait(initTasks)
       .chain((_) => _createDirs())
       .chain((_) {
         return (changedFiles.isEmpty)
-            // TODO(justinfagnani): Consider using file patterns in tasks to
-            // pull in less files.
             ? _getAllFiles()
             : new Future.immediate(changedFiles.filter(isValidInputFile));
       })
       .chain((List<String> filteredFiles) {
-        var futures = [];
-        for (var entry in _tasks) { // TODO: parallelize
-          var matches = filteredFiles.filter(entry.matches);
-          var paths = matches.map((f) => new Path(f));
-          futures.add(entry.task.run(paths, outDir, genDir));
-        }
-        return Futures.wait(futures);
-      })
-      .transform((results) {
-        var messages = [];
-        var mappings = new Map<String, String>();
-        for (TaskResult taskResult in results) {
-          messages.addAll(taskResult.messages);
-          for (var source in taskResult.mappings.keys) {
-            mappings[source] = taskResult.mappings[source];
-          }
-        }
-        var result = new BuildResult(messages, mappings);
-        _logger.info("Build finished $results");
-        return result;
+        var inputFiles = filteredFiles.map((f) => 
+            new InputFile(SOURCE_PREFIX, f));
+        return _runTasks(inputFiles);
       });
   }
   
+  /**
+   * Runs each task with the set of files that match it's glob entries. After
+   * the tasks are run, their outputs are run through the tasks again, in
+   * case a task is configured to operate on them. The process stops when there
+   * are no outputs, or when the max [depth] is reached (currently 5).
+   * 
+   * Returns a [BuildResult] combining the results of all task runs.
+   */
+  Future<BuildResult> _runTasks(List<InputFile> files, {depth: 0}) {
+    
+    _logger.fine("_runTasks: $files");
+    
+    if (depth > MAX_PASSES) {
+      return new Future.immediate(new BuildResult([], {}));
+    }
+    
+    var completer = new Completer();
+    var futures = [];
+    
+    // run all the tasks
+    for (var rule in _rules) {
+      var matches = files.filter((f) => rule.shouldRunOn(f.matchString));
+      if (!matches.isEmpty) {
+        var taskOutDir = _taskOutDir(rule.task);
+        futures.add(_createBuildDir(taskOutDir)
+            .chain((_) => rule.task.run(matches, taskOutDir, genDir))
+            .transform((r) => new _TaskAndResult(rule.task, r)));
+      }
+    }
+    
+    // process the results
+    Futures.wait(futures).then((List<_TaskAndResult> results) {
+      _logger.fine("tasks at depth $depth complete");
+      var messages = [];
+      var mappings = new Map<String, String>();
+      var newFiles = <InputFile>[];
+      
+      for (var taskAndResult in results) {
+        var task = taskAndResult.task;
+        var result = taskAndResult.result;
+        
+        newFiles.addAll(result.outputs.map((f) {
+          return new InputFile(task.name, f, dir: _taskOutDir(task).toString());
+        }));
+        
+        messages.addAll(result.messages);
+        for (var source in result.mappings.keys) {
+          mappings[source] = result.mappings[source];
+        }
+      }
+      
+      if (newFiles.isEmpty) {
+        completer.complete(new BuildResult(messages, mappings));
+      } else {
+        _logger.fine("new files to be processed: $newFiles");
+        _runTasks(newFiles, depth: depth + 1).then((buildResult) {
+          messages.addAll(buildResult.messages);
+          var allMappings = mergeMaps([mappings, buildResult.mappings]);
+          completer.complete(new BuildResult(messages, allMappings));
+        });
+      }
+    });
+    return completer.future;
+  }
+  
   /** Creates the output and gen directories */
-  Future _createDirs() => 
-      Futures.wait([_createBuildDir(outDir), _createGenDir(genDir)]);
+  Future _createDirs() => _createDir(buildDir).chain((_) => 
+      Futures.wait([_createBuildDir(outDir), _createDir(genDir)]));
 
   /** Creates the output directory and adds a packages/ symlink */
   Future _createBuildDir(Path buildDirPath) {
+    var cwd = new Directory.current().path;
+    _logger.info("cwd: $cwd $buildDirPath");
     var dir = new Directory.fromPath(buildDirPath);
     
     return dir.exists().chain((exists) {
@@ -108,7 +167,7 @@ class Builder {
   }
 
   /** Creates the gen directory */
-  Future<bool> _createGenDir(Path buildDirPath) {
+  Future<bool> _createDir(Path buildDirPath) {
     var dir = new Directory.fromPath(buildDirPath);
     return dir.exists().chain((exists) =>
         (exists) 
@@ -158,6 +217,8 @@ class Builder {
     getFiles(['web', 'lib', 'bin']);
     return futureGroup.future.transform((_) => files);
   }
+  
+  Path _taskOutDir(Task task) => buildDir.append('_${task.name}');
 }
 
 class BuildResult {
@@ -167,14 +228,32 @@ class BuildResult {
   BuildResult(this.messages, this.mappings);
 }
 
-class _TaskEntry {
+final RegExp taskNameExp = new RegExp(r'^\w+:');
+
+class _Rule {
   final List<String> files;
   final Task task;
   List<Glob> patterns;
   
-  _TaskEntry(this.files, this.task) {
-    patterns = files.map((f) => new Glob(f));
+  _Rule(this.files, this.task) {
+    patterns = files.map((f) {
+      // If the file pattern doesn't contain a task name prefix, add '_source:'
+      // to indicate that it matches against the original source tree. Forcing
+      // a prefix restricts patterns to match only one task, and prevents
+      // patterns like '**/a.html' from matching outputs from all tasks. We can
+      // relax this restriction later if necessary.
+      var patternString = taskNameExp.hasMatch(f) ? f : '$SOURCE_PREFIX:$f';
+      return new Glob(patternString);
+    });
   }
   
-  bool matches(String filename) => patterns.some((p) => p.hasMatch(filename));
+  bool shouldRunOn(String filename) => 
+      patterns.some((p) => p.hasMatch(filename));
 }
+
+class _TaskAndResult {
+  final Task task;
+  final TaskResult result;
+  _TaskAndResult(this.task, this.result);
+}
+

@@ -75,11 +75,12 @@ bool _inConfigure = false;
  * 
  * [addTask] can only be called from within the closure passed to [configure].
  */
-void addTask(List<String> files, Task task) {
+Task addTask(List<String> files, Task task) {
   if (!_inConfigure) {
     throw new StateError("addTask must be called inside a configure() call.");
   }
   builder.addTask(files, task);
+  return task;
 }
 
 /**
@@ -91,10 +92,12 @@ void addTask(List<String> files, Task task) {
 void configure(void configClosure(), {bool forceServer: false}) {
   _processArgs(forceServer);
   if (_isServer == true) {
-    _inConfigure = true;
-    configClosure();
-    _inConfigure = false;
-    serverMain();
+    serverSetup().then((_) {
+      _inConfigure = true;
+      configClosure();
+      _inConfigure = false;
+      serverMain();
+    });
   } else {
     clientMain(_args);
   }
