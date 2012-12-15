@@ -25,13 +25,15 @@ class DwcTask extends Task {
       List<dwc.CompilerResult> results = futures.map((f) => f.value);
       var mappings = new Map<String, String>();
       for (var result in results) {
-        for (var mappingSource in result.mappings.keys) {
-          mappings[mappingSource] = result.mappings[mappingSource];
+        for (var output in result.outputs.keys) {
+          if (result.outputs[output] != null) {
+            mappings[result.outputs[output]] = output;
+          }
         }
       }
       return new TaskResult(
           results.every((r) => r.success), 
-          _flatMap(results, (result) => result.outputs),
+          _flatMap(results, (result) => result.outputs.keys),
           mappings,
           _flatMap(results, (result) => result.messages));
     });

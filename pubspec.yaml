@@ -8,4 +8,4 @@ dependencies:
   args: any
   unittest: any
   #TODO: make dwc depend on buildtool
-  web_components: any
+  web_ui: any
