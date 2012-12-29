@@ -201,8 +201,9 @@ class Builder {
         if (dir.existsSync()) {
           // TODO: check that dir it not a symlink
           // recurse so we can symlink files/dirs further down in the tree
+          // unless it's the packages symlink
           _logger.fine("dir exists: $relativePath");
-          return true;
+          return !d.endsWith("packages");
         } else {
           createSymlink(d, linkPath.toString());
           return false;
