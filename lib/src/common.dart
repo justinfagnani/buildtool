@@ -24,6 +24,7 @@ final List<String> EXCLUDED_FILES = [
 
 final List<String> EXCLUDED_DIRS = [
   'packages',
+  '.git',
 ];
 
 bool isValidInputFile(String f) => 
