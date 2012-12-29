@@ -189,7 +189,7 @@ class Builder {
       // if it exists, recurse
       ..onDir = (d) {
         var relativePath = d.substring(inDir.toString().length + 1);
-        if (d.endsWith("packages") || !isValidInputFile(relativePath)) {
+        if (!isValidInputFile(relativePath)) {
           return false;
         }
         _logger.fine("looking at dir $relativePath");
