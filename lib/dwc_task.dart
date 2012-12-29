@@ -13,7 +13,7 @@ import 'package:logging/logging.dart';
 Logger _logger = new Logger('dwc_task');
 
 DwcTask compileWebComponents({String name: "web_ui", List<String> files}) =>
-    addTask(files, new DwcTask(name));
+    addRule(name, new DwcTask(name), files);
 
 class DwcTask extends Task {
   

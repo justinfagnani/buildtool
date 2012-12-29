@@ -13,6 +13,18 @@ final String SOURCE_PREFIX = '_source';
 
 final ContentType JSON_TYPE = new ContentType('application', 'json');
 
+final List<String> EXCLUDED_FILES = [
+  BUILDLOG_FILE,
+  BUILDLOCK_FILE,
+  'pubspec.yaml',
+  'pubspec.lock',
+  'build.dart',
+  '_build_server.dart',
+];
+
+final List<String> EXCLUDED_DIRS = [
+  'packages',
+];
 
 bool isValidInputFile(String f) => 
-    !(f.startsWith(BUILD_DIR) || f == BUILDLOG_FILE || f == BUILDLOCK_FILE);
+    !(f.startsWith(BUILD_DIR) || EXCLUDED_FILES.contains(f));

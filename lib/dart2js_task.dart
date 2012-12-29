@@ -15,7 +15,7 @@ Logger get _logger => new Logger('dart2js');
 
 /** Adds a dart2js task to the build configuration. */
 Dart2JSTask dart2js({String name: "dart2js", List<String> files}) => 
-    addTask(files, new Dart2JSTask(name));
+    addRule(name, new Dart2JSTask(name), files);
 
 Path get _dart2jsPath => new Path.fromNative(new Options().executable)
     .directoryPath.append('dart2js');

@@ -30,7 +30,7 @@ main() {
   test('basic', () {
     var task = new MockTask('mock');
     var builder = new Builder(buildPath, genPath);
-    builder.addTask(["**/*.html"], task);
+    builder.addRule('mock', task, ["**/*.html"]);
     
     builder.build([testPath, badPath], [], true)
         .then(expectAsync1((result) {

@@ -2,7 +2,6 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-
 library builder;
 
 import 'dart:io';
@@ -25,22 +24,32 @@ final int MAX_PASSES = 5;
 
 /** A runnable build configuration */
 class Builder {
-  final List<_Rule> _rules = <_Rule>[];
-  
+  final Path sourceDirPath;
   final Path buildDir;
   final Path genDir;
+  final Path outDir;
   
-  Builder(this.buildDir, this.genDir);
+  final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
+  final _taskQueue = new Queue<_ScheduledTask>();
   
-  Path get outDir => buildDir.append(OUT_DIR);
-
+  Builder(Path buildDir, Path genDir, {Path sourceDirPath})
+      : sourceDirPath = (sourceDirPath == null) 
+            ? new Path(new Directory.current().path)
+            : sourceDirPath,
+        buildDir = buildDir,
+        genDir = genDir,
+        outDir = buildDir.append(OUT_DIR);
+  
   /**
    * Adds a new [Task] to this builder which is run when files
    * match against the regex patterns in [files].
    */
-  void addTask(List<String> files, Task task) {
+  void addRule(String name, Task task, List<String> files) {
     _logger.info("adding task ${task} for files $files");
-    _rules.add(new _Rule(files, task));
+    if (_rules.containsKey(name)) {
+      throw new ArgumentError("Task with name $name already added");
+    }
+    _rules[name] = new _Rule(files, task);
   }
   
   /** 
@@ -69,10 +78,15 @@ class Builder {
             : new Future.immediate(changedFiles.filter(isValidInputFile));
       })
       .chain((List<String> filteredFiles) {
-        var inputFiles = filteredFiles.map((f) => 
-            new InputFile(SOURCE_PREFIX, f));
-        return _runTasks(inputFiles);
+        var files = filteredFiles.map((f) => new InputFile(SOURCE_PREFIX, f));
+        // Queue up the initial set of tasks that match on source files
+        _queueTasks(files);
+        return _run();
       });
+//      .chain((BuildResult) {
+//        // symlink the final output directory
+////        _symlinkSources
+//      });
   }
   
   /**
@@ -83,60 +97,123 @@ class Builder {
    * 
    * Returns a [BuildResult] combining the results of all task runs.
    */
-  Future<BuildResult> _runTasks(List<InputFile> files, {depth: 0}) {
+  Future<BuildResult> _run({Path previousOutDir, int count: 0}) {
+    if (!_taskQueue.isEmpty && count < MAX_PASSES) {
+      var scheduledTask = _taskQueue.removeFirst();
+      var task = scheduledTask.task;
+      var files = scheduledTask.files;
+      var taskOutDir = _taskOutDir(task);
+      
+      return _runTask(task, files)
+          .chain((TaskResult result) {
+            return _symlinkSources(previousOutDir, taskOutDir)
+                .transform((_) => result);
+          })
+          .chain((TaskResult result) {
+            assert(result != null);
+            var messages = new List.from(result.messages);
+            var mappings = new Map<String, String>();
+            // mappings are relative paths to the output dir, but the Editor
+            // needs them relative to the project dir
+            for (var file in result.mappings.keys) {
+              var newPath = taskOutDir.append(result.mappings[file]);
+              mappings[file] = newPath.toString();
+            }
+            
+            var newFiles = result.outputs.map((f) =>
+                new InputFile(task.name, f, dir: _taskOutDir(task).toString()));
     
-    _logger.fine("_runTasks: $files");
-    
-    if (depth > MAX_PASSES) {
-      return new Future.immediate(new BuildResult([], {}));
+            _queueTasks(newFiles);
+            
+            return _run(previousOutDir: taskOutDir, count: count + 1)
+                .transform((BuildResult result) {
+                  messages.addAll(result.messages);
+                  var allMappings = mergeMaps([mappings, result.mappings]);
+                  return new BuildResult(messages, mappings);
+                });
+          });
+    } else {
+      return _symlinkSources(previousOutDir, outDir)
+          .transform((_) => new BuildResult([], {}));
     }
-    
-    var completer = new Completer();
-    var futures = [];
-    
-    // run all the tasks
-    for (var rule in _rules) {
+  }
+  
+  /** Add all tasks that should run on [files] to the task queue. */
+  _queueTasks(files) {
+    for (var rule in _rules.values) {
       var matches = files.filter((f) => rule.shouldRunOn(f.matchString));
       if (!matches.isEmpty) {
-        var taskOutDir = _taskOutDir(rule.task);
-        futures.add(_createBuildDir(taskOutDir)
-            .chain((_) => rule.task.run(matches, taskOutDir, genDir))
-            .transform((r) => new _TaskAndResult(rule.task, r)));
+        _taskQueue.add(new _ScheduledTask(rule.task, matches));
       }
     }
+  }
+  
+  /** Run a [task] on [files]. */
+  Future<TaskResult> _runTask(Task task, Iterable<InputFile> files) {
+    var taskOutDir = _taskOutDir(task);
+    return _createBuildDir(taskOutDir)
+        .chain((_) => task.run(files, taskOutDir, genDir))
+        .transform((TaskResult result) {
+          _logger.fine("task ${task.name} mappings: ${result.mappings}");
+          return result;
+        });
+  }
+  
+  Future _symlinkSources(Path inDir, Path outDir) {
+    inDir = inDir == null ? sourceDirPath : inDir;
+    if (!inDir.isAbsolute) {
+      inDir = new Path(new Directory.current().path).join(inDir);
+    }
+    _logger.fine("symlinking sources from $inDir to $outDir");
+    var completer = new Completer();
     
-    // process the results
-    Futures.wait(futures).then((List<_TaskAndResult> results) {
-      _logger.fine("tasks at depth $depth complete");
-      var messages = [];
-      var mappings = new Map<String, String>();
-      var newFiles = <InputFile>[];
-      
-      for (var taskAndResult in results) {
-        var task = taskAndResult.task;
-        var result = taskAndResult.result;
-        
-        newFiles.addAll(result.outputs.map((f) {
-          return new InputFile(task.name, f, dir: _taskOutDir(task).toString());
-        }));
-        
-        messages.addAll(result.messages);
-        for (var source in result.mappings.keys) {
-          mappings[source] = result.mappings[source];
+    // we walk the inDir tree
+    var lister = new RecursiveDirectoryLister.fromPath(inDir)
+      // when we see a file (TODO: which might be a broken dir symlink)
+      // symlink that file in the outDir, unless it already exists
+      ..onFile = (f) {
+        var relativePath = f.substring(inDir.toString().length + 1);
+        _logger.fine("looking at file $relativePath ${isValidInputFile(relativePath)}");
+        if (isValidInputFile(relativePath)) {
+          var linkPath = outDir.append(relativePath);
+          var file = new File.fromPath(outDir.append(relativePath));
+          if (!file.existsSync()) {
+            // TODO: how do we validate the file? could it be a broken symlink?
+            createSymlink(f, linkPath.toString());
+          } else {
+            _logger.fine("file exists: $relativePath");
+          }
         }
       }
-      
-      if (newFiles.isEmpty) {
-        completer.complete(new BuildResult(messages, mappings));
-      } else {
-        _logger.fine("new files to be processed: $newFiles");
-        _runTasks(newFiles, depth: depth + 1).then((buildResult) {
-          messages.addAll(buildResult.messages);
-          var allMappings = mergeMaps([mappings, buildResult.mappings]);
-          completer.complete(new BuildResult(messages, allMappings));
-        });
+      // when we see a dir, symlink it unless it exists
+      // if it exists, recurse
+      ..onDir = (d) {
+        var relativePath = d.substring(inDir.toString().length + 1);
+        if (d.endsWith("packages") || !isValidInputFile(relativePath)) {
+          return false;
+        }
+        _logger.fine("looking at dir $relativePath");
+        var linkPath = outDir.append(relativePath);
+        
+        var dir = new Directory.fromPath(linkPath);
+        var file = new File.fromPath(linkPath);
+        
+        if (dir.existsSync()) {
+          // TODO: check that dir it not a symlink
+          // recurse so we can symlink files/dirs further down in the tree
+          _logger.fine("dir exists: $relativePath");
+          return true;
+        } else {
+          createSymlink(d, linkPath.toString());
+          return false;
+        }
       }
-    });
+      ..onDone = (s) {
+        completer.complete(null);
+      }
+      ..onError = (e) {
+        completer.completeException(e);
+      };
     return completer.future;
   }
   
@@ -146,8 +223,6 @@ class Builder {
 
   /** Creates the output directory and adds a packages/ symlink */
   Future _createBuildDir(Path buildDirPath) {
-    var cwd = new Directory.current().path;
-    _logger.info("cwd: $cwd $buildDirPath");
     var dir = new Directory.fromPath(buildDirPath);
     
     return dir.exists().chain((exists) {
@@ -185,37 +260,18 @@ class Builder {
   }
   
   Future<List<String>> _getAllFiles() {
-    var cwd = new Directory.current().path;
-    var futureGroup = new FutureGroup();
     var files = <String>[];
-    var _error = false;
-    onDir(String dir) {
-      if (!_error && !dir.endsWith("packages")) {
-        var completer = new Completer();
-        futureGroup.add(completer.future);
-        new Directory(dir).list()
-        ..onFile = (file) { 
-          if (!_error) files.add(file.substring(cwd.length + 1));
-        }
-        ..onDir = onDir
-        ..onDone = (s) {
-          if (!_error) completer.complete(null);
-        }
-        ..onError = (e) {
-          _error = true;
-          completer.completeException(e);
-        };
-       }
-     }
-    getFiles(List<String> dirs) {
-      dirs.forEach((dir) {
-        new Directory(dir).exists().then((exists) {
-          if (exists) onDir(dir);
-        });
-      });
-    }
-    getFiles(['web', 'lib', 'bin']);
-    return futureGroup.future.transform((_) => files);
+    var completer = new Completer<List<String>>();
+    var lister = new RecursiveDirectoryLister.fromPath(sourceDirPath)
+      ..onDir = ((String dir) => !dir.endsWith("packages"))
+      ..onFile = (file) {
+        files.add(file.substring(sourceDirPath.toString().length + 1));
+      }
+      ..onDone = (s) {
+        completer.complete(files);
+      }
+      ..onError = completer.completeException;
+    return completer.future;    
   }
   
   Path _taskOutDir(Task task) => buildDir.append('_${task.name}');
@@ -251,9 +307,15 @@ class _Rule {
       patterns.some((p) => p.hasMatch(filename));
 }
 
-class _TaskAndResult {
-  final Task task;
-  final TaskResult result;
-  _TaskAndResult(this.task, this.result);
-}
+//class _TaskAndResult {
+//  final Task task;
+//  final TaskResult result;
+//  _TaskAndResult(this.task, this.result);
+//}
 
+class _ScheduledTask {
+  final Task task;
+  final Iterable<InputFile> files;
+  
+  _ScheduledTask(this.task, this.files);
+}

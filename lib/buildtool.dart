@@ -75,11 +75,11 @@ bool _inConfigure = false;
  * 
  * [addTask] can only be called from within the closure passed to [configure].
  */
-Task addTask(List<String> files, Task task) {
+Task addRule(String name, Task task, List<String> files) {
   if (!_inConfigure) {
     throw new StateError("addTask must be called inside a configure() call.");
   }
-  builder.addTask(files, task);
+  builder.addRule(name, task, files);
   return task;
 }
 

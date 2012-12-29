@@ -54,9 +54,14 @@ class InputFile {
   String toString() => matchString;
 }
 
+/**
+ * Information about the task run. 
+ */
 class TaskResult {
   final bool succeeded;
   final List<String> outputs;
+  
+  /** Mapping of inputs to outputs. */
   final Map<String, String> mappings;
   final List<String> messages;
   

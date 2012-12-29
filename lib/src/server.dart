@@ -43,17 +43,17 @@ serverMain() {
 }
 
 void _buildHandler(HttpRequest req, HttpResponse res) {
-  readStreamAsString(req.inputStream)
-  ..handleException((e) {
-    _logger.severe("error: $e");
-    _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+  var future = readStreamAsString(req.inputStream);
+  future.handleException((e) {
+    _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
+    _jsonReply(res, {'status': 'ERROR', 'error': "$e ${future.stackTrace}"});
     return true;
-  })
-  ..then((str) {
+  });
+  future.then((str) {
     var data = JSON.parse(str);
     builder.build(data['changed'], data['removed'], data['clean'])
       ..handleException((e) {
-        _logger.severe("error: $e");
+        _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
         _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
         return true;
       })
@@ -62,27 +62,30 @@ void _buildHandler(HttpRequest req, HttpResponse res) {
         for (var source in result.mappings.keys) {
           mappings.add({'from': source, 'to': result.mappings[source]});
         }
-        _jsonReply(res, {
+        var data = {
           'status': 'OK',
           'messages': result.messages,
-          'mappings': mappings});
+          'mappings': mappings,
+        };
+        _logger.fine("data: $data");
+        _jsonReply(res, data);
       });
   });
 }
 
 void _closeHandler(HttpRequest req, HttpResponse res) {
   print("closing server... ");
-  Futures.wait([_deleteLockFile(), _closeLogFile()])
-    ..handleException((e) {
+  var future = Futures.wait([_deleteLockFile(), _closeLogFile()]);
+  future.handleException((e) {
       res.outputStream.onClosed = () {
         print("closed");
         exit(0);
       };
-      _logger.severe("error: $e");
+      _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
       _jsonReply(res, {'status': 'CLOSED', 'error': "$e"});
       return true;
-    })
-    ..then((_) {
+    });
+    future.then((_) {
       res.outputStream.onClosed = () {
         print("closed");
         exit(0);
@@ -168,7 +171,7 @@ Future _createLogFile() {
     _logStream = log.openOutputStream(FileMode.APPEND);
     Logger.root.level = Level.FINE;
     Logger.root.on.record.add((LogRecord r) {
-      var m = "${r.time} ${r.level} ${r.message}\n";
+      var m = "${r.time} ${r.loggerName} ${r.level} ${r.message}\n";
       _logStream.writeString(m);
       stdout.writeString(m);
       stdout.flush();
