@@ -4,6 +4,7 @@
 
 library client;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:json';
 import 'package:args/args.dart';
@@ -21,43 +22,40 @@ void clientMain(ArgResults args) {
     _getServerPort().then((port) {
       if (port != null) {
         _sendCloseCommand(port).then((s) {
-          exit(0);
         });
       } else {
         _logger.severe("no server to quit");
-        exit(0);
       }
     });
   } else {
     var changedFiles = args['changed'];
-    var filteredFiles = changedFiles.filter(isValidInputFile);
+    var filteredFiles = changedFiles.where(isValidInputFile);
     if (args['machine'] && filteredFiles.isEmpty) {
       _logger.info("no changed files");
-      exit(0);
+    } else {
+      _getServerPort().then((port) {
+        if (port != null) {
+          _sendBuildCommand(port, filteredFiles, args['clean'])
+            .then((Map result) {
+              List<Map<String, String>> mappingList = result['mappings'];
+              for (var mapping in mappingList) {
+                var message = stringify([{
+                  'method': 'mapping',
+                  'params': {
+                    'from': mapping['from'],
+                    'to': mapping['to'],
+                  },
+                }]);
+                // write message for the Editor to receive
+                stdout.writeString("$message\n");
+              }
+            });
+        } else {
+          _logger.severe("Error starting buildtool server.");
+          exitCode = 1;
+        }
+      });
     }
-    _getServerPort().then((port) {
-      if (port != null) {
-        _sendBuildCommand(port, filteredFiles, args['clean'])
-          .then((Map result) {
-            List<Map<String, String>> mappingList = result['mappings'];
-            for (var mapping in mappingList) {
-              var message = JSON.stringify([{
-                'method': 'mapping',
-                'params': {
-                  'from': mapping['from'],
-                  'to': mapping['to'],
-                },
-              }]);
-              // write message for the Editor to receive
-              stdout.writeString("$message\n");
-            }
-            exit(0);
-          });
-      } else {
-        _logger.severe("Error starting buildtool server.");
-        exit(1);
-      }
-    });
   }
 }
 
@@ -84,7 +82,7 @@ Future<Map> _sendBuildCommand(
  * representation of [data] as the request body. The response is parsed as JSON
  * and returned via a Future
  */
-Future _sendJsonCommand(int port, String path, {var data, 
+Future<dynamic> _sendJsonCommand(int port, String path, {var data,
     bool isRetry: false}) {
   var completer = new Completer();
   var client = new HttpClient();
@@ -92,7 +90,7 @@ Future _sendJsonCommand(int port, String path, {var data,
     ..onRequest = (req) {
       req.headers.contentType = JSON_TYPE;
       if (data != null) {
-        var json = JSON.stringify(data);
+        var json = stringify(data);
         req.contentLength = json.length;
         req.outputStream.writeString(json);
       }
@@ -100,43 +98,48 @@ Future _sendJsonCommand(int port, String path, {var data,
     }
     ..onResponse = (res) {
       readStreamAsString(res.inputStream)
-        ..handleException((e) {
-          completer.completeException(e);
+        .catchError((e) {
+          completer.completeError(e);
+          client.shutdown();
           return true;
         })
-        ..then((str) {
-          var response = JSON.parse(str);
+        .then((str) {
+          var response = parse(str);
+          client.shutdown();
           completer.complete(response);
         });
     }
     ..onError = (e) {
       _logger.severe("error: $e");
-      if (e is SocketIOException && 
+      client.shutdown();
+      if (e is SocketIOException &&
           e.osError.errorCode == _CONNECTION_REFUSED &&
           !isRetry) {
         //restart server
         _logger.fine("restarting server");
         _startServer()
-          ..handleException((e) {
-            completer.completeException(e);
+          .catchError((e) {
+            completer.completeError(e);
             return true;
           })
-          ..then((port) {
+          .then((port) {
             _logger.fine("restarted server on port $port");
             _sendJsonCommand(port, path, data: data, isRetry: true)
-              ..handleException((e) {
-                completer.completeException(e);
+              .catchError((e) {
+                completer.completeError(e);
                 return true;
               })
-              ..then(completer.complete);
+              .then((v) => completer.complete(v));
           });
       } else {
-        completer.completeException(e);
+        _logger.severe("exception: $e");
+        completer.completeError(e);
       }
     };
   return completer.future;
 }
 
+/** Returns the port of the running builtool server, or starts a new server. */
 Future<int> _getServerPort() {
   var completer = new Completer();
   var lockFile = new File('.buildlock');
@@ -154,18 +157,18 @@ Future<int> _getServerPort() {
             _logger.fine("server already running onport: $port");
             completer.complete(port);
           } on Error catch (e) {
-            completer.completeException(e);
+            completer.completeError(e);
           }
         };
-    } else { 
-      _startServer().then(completer.complete);
+    } else {
+      _startServer().then((v) => completer.complete(v));
     }
   });
   return completer.future;
 }
 
 Future<int> _startServer() {
-  var completer = new Completer(); 
+  var completer = new Completer();
   var vmExecutable = new Options().executable;
   Process.start(vmExecutable, ["build.dart", "--server"]).then((process) {
     var sis = new StringInputStream(process.stdout);

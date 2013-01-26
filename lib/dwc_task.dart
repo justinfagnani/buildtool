@@ -4,6 +4,7 @@
 
 library dwc_task;
 
+import 'dart:async';
 import 'dart:io';
 import 'package:buildtool/buildtool.dart';
 import 'package:buildtool/task.dart';
@@ -16,22 +17,25 @@ DwcTask compileWebComponents({String name: "web_ui", List<String> files}) =>
     addRule(name, new DwcTask(name), files);
 
 class DwcTask extends Task {
-  
+
   DwcTask(String name) : super(name);
-  
+
   Future<TaskResult> run(List<InputFile> files, Path outDir, Path genDir) {
-    
+
     var futures = <Future<dwc.CompilerResult>>[];
-    
+
     for (var file in files) {
       var fileOutDir = outDir.join(file.inputPath).directoryPath;
-      var args = ['-o', fileOutDir.toString(), file.inputPath.toNativePath()];
+      var args = ['--out', outDir.toString()];
+      var basedir = (file.dir != null) ? file.dir : '.';
+      args.addAll(['--basedir', basedir]);
+      args.add(file.inputPath.toNativePath());
       futures.add(dwc.run(args));
     }
-    return Futures.wait(futures).transform((List<dwc.CompilerResult> results) {
+    return Future.wait(futures).then((List<dwc.CompilerResult> results) {
       var mappings = new Map<String, String>();
       var outputs = <String>[];
-      
+
       for (var result in results) {
         for (var output in result.outputs.keys) {
           var outputPath = output.substring(outDir.toString().length + 1);
@@ -39,12 +43,12 @@ class DwcTask extends Task {
           if (result.outputs[output] != null) {
             var sourcePath = result.outputs[output];
             mappings[sourcePath] = outputPath;
-            _logger.fine("adding mapping: $sourcePath = $outputPath");
+//            _logger.fine("adding mapping: $sourcePath = $outputPath");
           }
         }
       }
       return new TaskResult(
-          results.every((r) => r.success), 
+          results.every((r) => r.success),
           outputs,
           mappings,
           _flatMap(results, (result) => result.messages));

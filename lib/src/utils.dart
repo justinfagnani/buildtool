@@ -4,10 +4,9 @@
 
 library utils;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:uri';
-import 'package:web_ui/src/utils.dart' show FutureGroup;
-export 'package:web_ui/src/utils.dart' show FutureGroup;
 import 'package:logging/logging.dart';
 
 Future<String> readStreamAsString(InputStream stream) {
@@ -21,7 +20,7 @@ Future<String> readStreamAsString(InputStream stream) {
   ..onClosed = () {
     completer.complete(sb.toString());
   }
-  ..onError = completer.completeException;
+  ..onError = completer.completeError;
   return completer.future;
 }
 
@@ -39,7 +38,7 @@ void printLogRecord(LogRecord r) {
   print("${r.loggerName} ${r.level} ${r.message}");
 }
 
-/** 
+/**
  * Merges [maps] by adding the key/value pairs from each map to a new map.
  * Values in the laters maps overwrite values in the earlier maps.
  */
@@ -67,7 +66,7 @@ class RecursiveDirectoryLister implements DirectoryLister {
   var _onError;
   var _error = false;
 
-  RecursiveDirectoryLister(Directory dir) 
+  RecursiveDirectoryLister(Directory dir)
     : _lister = dir.list(),
       _futureGroup = new FutureGroup() {
 
@@ -79,7 +78,7 @@ class RecursiveDirectoryLister implements DirectoryLister {
 
   RecursiveDirectoryLister.fromPath(Path path) :
       this(new Directory.fromPath(path));
-  
+
   void set onDir(bool onDir(String dir)) {
     _onDir = onDir;
   }
@@ -94,11 +93,11 @@ class RecursiveDirectoryLister implements DirectoryLister {
           ..onDir = _onDirHelper
           ..onFile = _onFile
           ..onError = _onError
-          ..onDone = completer.complete;
+          ..onDone = (s) => completer.complete(s);
       }
     }
   }
-  
+
   void set onFile(void onFile(String file)) {
     _onFile = onFile;
   }
@@ -108,11 +107,11 @@ class RecursiveDirectoryLister implements DirectoryLister {
       _onFile(file);
     }
   }
-  
+
   void set onDone(void onDone(bool completed)) {
     _futureGroup.add(completer.future);
-    _futureGroup.future.then((List<Future> futures) { 
-      onDone(futures.every((f) => f.value)); 
+    _futureGroup.future.then((List values) {
+      onDone(values.every((f) => f));
     });
   }
 
@@ -121,15 +120,65 @@ class RecursiveDirectoryLister implements DirectoryLister {
       completer.complete(complete);
     }
   }
-  
+
   void set onError(void onError(e)) {
     _onError = onError;
   }
-  
+
   void _onErrorHelper(e) {
     _error = true;
     if (_onError != null) {
       _onError(e);
     }
   }
+}
+
+
+/** A future that waits until all added [Future]s complete. */
+// TODO(sigmund): this should be part of the futures/core libraries.
+class FutureGroup {
+  const _FINISHED = -1;
+
+  int _count = 0;
+  int _pending = 0;
+  Future _failedTask;
+  final Completer<List> _completer = new Completer<List>();
+  final List _values = [];
+
+  /** Gets the task that failed, if any. */
+  Future get failedTask => _failedTask;
+
+  /**
+   * Wait for [task] to complete.
+   *
+   * If this group has already been marked as completed, you'll get a
+   * [FutureAlreadyCompleteException].
+   *
+   * If this group has a [failedTask], new tasks will be ignored, because the
+   * error has already been signaled.
+   */
+  void add(Future task) {
+    if (_failedTask != null) return;
+    if (_pending == _FINISHED) throw new StateError("Future already completed");
+
+    var index = _count;
+    _count++;
+    _pending++;
+    _values.add(null);
+    task.then((value) {
+      if (_failedTask != null) return;
+      _values[index] = value;
+      _pending--;
+      if (_pending == 0) {
+        _pending = _FINISHED;
+        _completer.complete(_values);
+      }
+    }, onError: (e) {
+      if (_failedTask != null) return;
+      _failedTask = task;
+      _completer.completeError(e.error, e.stackTrace);
+    });
+  }
+
+  Future<List> get future => _completer.future;
 }

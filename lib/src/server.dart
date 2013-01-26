@@ -4,6 +4,7 @@
 
 library server;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:json';
@@ -25,7 +26,7 @@ serverMain() {
   var serverSocket = new ServerSocket("127.0.0.1", 0, 0);
   _logger.info("listening on localhost:${serverSocket.port}");
   var server = new HttpServer();
-  
+
   server.addRequestHandler((req) => req.path == BUILD_URL, _buildHandler);
   server.addRequestHandler((req) => req.path == CLOSE_URL, _closeHandler);
   server.addRequestHandler((req) => req.path == STATUS_URL, _statusHandler);
@@ -43,55 +44,51 @@ serverMain() {
 }
 
 void _buildHandler(HttpRequest req, HttpResponse res) {
-  var future = readStreamAsString(req.inputStream);
-  future.handleException((e) {
-    _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
-    _jsonReply(res, {'status': 'ERROR', 'error': "$e ${future.stackTrace}"});
-    return true;
-  });
-  future.then((str) {
-    var data = JSON.parse(str);
-    builder.build(data['changed'], data['removed'], data['clean'])
-      ..handleException((e) {
-        _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
-        _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
-        return true;
-      })
-      ..then((result) {
-        var mappings = [];
-        for (var source in result.mappings.keys) {
-          mappings.add({'from': source, 'to': result.mappings[source]});
-        }
-        var data = {
-          'status': 'OK',
-          'messages': result.messages,
-          'mappings': mappings,
-        };
-        _logger.fine("data: $data");
-        _jsonReply(res, data);
-      });
-  });
+  readStreamAsString(req.inputStream)
+    .catchError((e) {
+      _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
+      _jsonReply(res, {'status': 'ERROR', 'error': "$e ${e.stackTrace}"});
+      return true;
+    }).then((str) {
+      var data = parse(str);
+      builder.build(data['changed'], data['removed'], clean: data['clean'])
+        .catchError((e) {
+          _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
+          _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+          return true;
+        })
+        .then((result) {
+          var mappings = [];
+          for (var source in result.mappings.keys) {
+            mappings.add({'from': source, 'to': result.mappings[source]});
+          }
+          var data = {
+            'status': 'OK',
+            'messages': result.messages,
+            'mappings': mappings,
+          };
+          _logger.fine("data: $data");
+          _jsonReply(res, data);
+        });
+    });
 }
 
 void _closeHandler(HttpRequest req, HttpResponse res) {
-  print("closing server... ");
-  var future = Futures.wait([_deleteLockFile(), _closeLogFile()]);
-  future.handleException((e) {
-      res.outputStream.onClosed = () {
-        print("closed");
-        exit(0);
-      };
-      _logger.severe("error: $e\nstacktrace: ${future.stackTrace}");
-      _jsonReply(res, {'status': 'CLOSED', 'error': "$e"});
-      return true;
-    });
-    future.then((_) {
-      res.outputStream.onClosed = () {
-        print("closed");
-        exit(0);
-      };
-      _jsonReply(res, {'status': 'CLOSED'});
-    });
+  _logger.fine("closing server... ");
+  Future.wait([_deleteLockFile(), _closeLogFile()])
+      .catchError((e) {
+        res.outputStream.onClosed = () {
+          _logger.fine("closed");
+        };
+        _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
+        _jsonReply(res, {'status': 'CLOSED', 'error': "$e"});
+        return true;
+      }).then((_) {
+        res.outputStream.onClosed = () {
+          _logger.fine("closed");
+        };
+        _jsonReply(res, {'status': 'CLOSED'});
+      });
 }
 
 void _statusHandler(HttpRequest req, HttpResponse res) {
@@ -99,33 +96,33 @@ void _statusHandler(HttpRequest req, HttpResponse res) {
 }
 
 void _jsonReply(HttpResponse res, var data) {
-  var str = JSON.stringify(data);
+  var str = stringify(data);
   res.contentLength = str.length;
   res.headers.contentType = JSON_TYPE;
   res.outputStream.writeString(str);
   res.outputStream.close();
 }
 
-/** 
+/**
  * Attempts to write a lock file containing [port].
- * 
+ *
  * If the lock file doesn't exist, it's created and the value passed to [port]
  * is returned in the Future.
- *  
+ *
  * If the lock file already exists, tries to contact a server at the port in
  * the lock file. If the server is alive, returns the port from the lock file.
  * If the server isn't alive, the lock file is overwritten with [port].
- * 
+ *
  * Note: This isn't a failsafe locking mechanism. There are several race
  * conditions present, but Dart needs some kind of mutex mechanism to solve
  * them.
  */
 Future<int> _writeLockFile(int port) {
   var lockFile = new File(BUILDLOCK_FILE);
-  return lockFile.exists().chain((exists) {
+  return lockFile.exists().then((exists) {
     var serverPort = port;
     if (exists) {
-      return readStreamAsString(lockFile.openInputStream()).chain((str) {
+      return readStreamAsString(lockFile.openInputStream()).then((str) {
         var otherPort;
         try {
           otherPort = int.parse(str);
@@ -133,7 +130,7 @@ Future<int> _writeLockFile(int port) {
           // if we can't parse a port, create the lockfile
           return new Future.immediate(true);
         }
-        return _pingServer(otherPort).transform((responded) {
+        return _pingServer(otherPort).then((responded) {
           if (responded) {
             // make sure we return the other server's port
             port = otherPort;
@@ -146,7 +143,7 @@ Future<int> _writeLockFile(int port) {
       // create lockfile if it doesn't exist
       return new Future.immediate(true);
     }
-  }).chain((create) {
+  }).then((create) {
     if (create) {
       var completer = new Completer();
       var os = lockFile.openOutputStream(FileMode.WRITE);
@@ -167,7 +164,7 @@ Future _deleteLockFile() {
 OutputStream _logStream;
 
 Future _createLogFile() {
-  return new File(BUILDLOG_FILE).create().transform((log) {
+  return new File(BUILDLOG_FILE).create().then((log) {
     _logStream = log.openOutputStream(FileMode.APPEND);
     Logger.root.level = Level.FINE;
     Logger.root.on.record.add((LogRecord r) {
@@ -200,9 +197,9 @@ Future<bool> _pingServer(int port) {
     }
     ..onResponse = (res) {
       readStreamAsString(res.inputStream).then((str) {
-        var data = JSON.parse(str);
-        completer.complete((data is Map) && (data.containsKey('status') 
-            && data['status'] == 'OK'));        
+        var data = parse(str);
+        completer.complete((data is Map) && (data.containsKey('status')
+            && data['status'] == 'OK'));
       });
     }
     ..onError = (e) {

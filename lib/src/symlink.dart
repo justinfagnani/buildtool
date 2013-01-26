@@ -4,6 +4,7 @@
 
 library symlink;
 
+import 'dart:async';
 import 'dart:io';
 import 'package:logging/logging.dart';
 
@@ -31,7 +32,7 @@ Future createSymlink(String target, String linkPath) {
     args = ['/c', 'mklink', '/j', linkPath, target];
   }
 
-  return Process.run(command, args).transform((result) {
+  return Process.run(command, args).then((result) {
     if (result.exitCode != 0) {
       var details = 'subprocess stdout:\n${result.stdout}\n'
                     'subprocess stderr:\n${result.stderr}';
@@ -48,9 +49,9 @@ Future createSymlink(String target, String linkPath) {
  */
 bool dirSymlinkExists(String linkPath) => new Directory(linkPath).existsSync();
 
-/** 
+/**
  * If [linkPath] is a file, deletes it, since broken symlinks act like a file.
- */ 
+ */
 removeBrokenDirSymlink(String linkPath) {
   var toFile = new File(linkPath);
   if (toFile.existsSync()) {

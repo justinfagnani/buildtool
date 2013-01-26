@@ -5,7 +5,7 @@ import 'dart:io';
 final String BUILD_URL = '/build';
 final String CLOSE_URL = '/close';
 final String STATUS_URL = '/status';
-final String BUILDLOG_FILE = '.buildlog';
+final String BUILDLOG_FILE = '.buildtool_log';
 final String BUILDLOCK_FILE = '.buildlock';
 final String BUILD_DIR = 'build_out';
 final String OUT_DIR = 'out';
@@ -16,6 +16,7 @@ final ContentType JSON_TYPE = new ContentType('application', 'json');
 final List<String> EXCLUDED_FILES = [
   BUILDLOG_FILE,
   BUILDLOCK_FILE,
+  '.buildlog',
   'pubspec.yaml',
   'pubspec.lock',
   'build.dart',
@@ -23,9 +24,10 @@ final List<String> EXCLUDED_FILES = [
 ];
 
 final List<String> EXCLUDED_DIRS = [
+  BUILD_DIR,
   'packages',
   '.git',
 ];
 
-bool isValidInputFile(String f) => 
-    !(f.startsWith(BUILD_DIR) || EXCLUDED_FILES.contains(f));
+bool isValidInputFile(String f) =>
+    !(EXCLUDED_DIRS.any((d) => f.startsWith(d)) || EXCLUDED_FILES.contains(f));
