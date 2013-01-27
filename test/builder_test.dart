@@ -53,15 +53,16 @@ main() {
 
   test('single task', () {
     var taskOutPath = buildPath.append('_mock');
-    var testPath = 'test.html';
-    var outPath = taskOutPath.append(testPath).toString();
-    var badPath = 'test.txt';
+    var file1Path = 'test.html';
+    var file2Path = 'test.txt';
+    var out1Path = taskOutPath.append(file1Path).toString();
+    var out2Path = taskOutPath.append(file2Path).toString();
 
     var task = new MockTask('mock');
     var builder = new Builder(buildPath, genPath, sourceDirPath: sourcePath);
     builder.addRule('mock', task, ["*.html"]);
 
-    builder.build([testPath, badPath], [], clean: false)
+    builder.build([file1Path, file2Path], [], clean: false)
         .then(expectAsync1((result) {
 
           // check output and gen directories were created
@@ -73,11 +74,22 @@ main() {
           // check outputs
           expect(result.mappings.length, 1);
           // the input file should map into task out dir
-          expect(result.mappings, containsPair(testPath, outPath));
+          expect(result.mappings, containsPair(file1Path, out1Path));
 
-          // check that the mock task only received [testPath], and not
-          // [badPath] or other files
-          expect(task.files.mappedBy((f) => f.path), orderedEquals([testPath]));
+          var out1File = new File(out1Path);
+          expect(out1File.existsSync(), true);
+          // should be a real file in the task output dir
+          expect(out1File.fullPathSync(), endsWith('data/build_out/_mock/test.html'));
+
+          var out2File = new File(out2Path);
+          expect(out2File.existsSync(), true);
+          // should be a symlink to the source file, so the full path will
+          // be the original, not the location of the symlink
+          expect(out2File.fullPathSync(), endsWith('data/test.txt'));
+
+          // check that the mock task only received [file1Path], and not
+          // [file2Path] or other files
+          expect(task.files.mappedBy((f) => f.path), [file1Path]);
 
           // check task dirs set correctly
           // must convert Paths to Strings for equality
@@ -110,17 +122,28 @@ main() {
         }));
   });
 
-// TODO(justinfagnani): finish this test
+//  Disabling this test for now, since direct inter task dependencies are not
+//  completely defined of implemented yet, but if they were this test might
+//  pass as is, so leaving it as a partial spec.
+//
 //  test('dependent tasks', () {
 //    var task1 = new MockTask('task1');
 //    var task2 = new MockTask('task2');
-//    var builder = new Builder(buildPath, genPath);
-//    builder.addRule('task1', task1, ["*.html"]);
-//    builder.addRule('task2', task2, [task1.out("*.txt")]);
 //
+//    var filePath = 'test.html';
+//
+//    var builder = new Builder(buildPath, genPath, sourceDirPath: sourcePath);
+//    builder.addRule('task1', task1, ["*.html"]);
+//    builder.addRule('task2', task2, [task1.out("*.html")]);
+//    builder.build([filePath], [], clean:false)
+//        .then(expectAsync1((BuildResult result) {
+//          // check that task2 gets the file from task1
+//          expect(task2.files.length, 1);
+//          expect(task2.files[0].dir, 'build_out/_task1');
+//        }));
 //  });
 
-  solo_test('clean', () {
+  test('clean', () {
     // create some trash in the build and gen dirs
     new Directory.fromPath(buildPath.append('trash'))
         .createSync(recursive: true);

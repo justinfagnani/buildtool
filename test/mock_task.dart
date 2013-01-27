@@ -13,7 +13,7 @@ import 'package:logging/logging.dart';
 var _logger = new Logger("MockTask");
 
 class MockTask extends Task {
-  List<InputFile> files;
+  List<InputFile> files = [];
   Path outDir;
   Path genDir;
 

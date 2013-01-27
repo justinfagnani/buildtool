@@ -102,56 +102,63 @@ class Builder {
    *
    * Returns a [BuildResult] combining the results of all task runs.
    */
-  Future<BuildResult> _run(List<InputFile> files, {Path previousOutDir}) {
-    if (!_taskQueue.isEmpty) {
-      var rule = _taskQueue.removeFirst();
+  Future<BuildResult> _run(List<InputFile> files) {
+    // copy files so we can add the output of tasks to it
+    var allFiles = new List.from(files);
+    Path previousOutDir;
 
-      var matches = files.where((f) => rule.shouldRunOn(f.matchString)).toList();
+    // Run an async function on every rule that runs the rule, symlinks it's
+    // output directory and updates the BuildResult. We reduce the list of
+    // rules to a BuildResult, but there is only one BuildResult instance which
+    // is just mutatted and passed along.
+    return reduceAsync(_rules.values, new BuildResult.empty(),
+        (BuildResult buildResult, _Rule rule) {
+
+      var matches = allFiles.where((f) =>
+          rule.shouldRunOn(f.matchString)).toList();
       if (matches.isEmpty) {
-        return _run(files, previousOutDir: previousOutDir);
+        // don't run the current task if we have no files to operate on
+        return new Future.immediate(buildResult);
       }
 
       var task = rule.task;
       var taskOutDir = _taskOutDir(task);
 
       return _runTask(task, matches)
-          .then((TaskResult result) {
-            _logger.info(
-                "Task complete: ${task.name}\n"
-                "  outputs: ${result.outputs}");
-            return result;
-          })
-          .then((TaskResult result) {
-            return _symlinkSources(previousOutDir, taskOutDir)
-                .then((_) => result);
-          })
-          .then((TaskResult result) {
-            assert(result != null);
-            var messages = new List.from(result.messages);
-            var mappings = new Map<String, String>();
-            // mappings are relative paths to the output dir, but the Editor
-            // needs them relative to the project dir
-            for (var file in result.mappings.keys) {
-              var newPath = taskOutDir.append(result.mappings[file]);
-              mappings[file] = newPath.toString();
-            }
+        .then((TaskResult result) {
+          _logger.info(
+              "Task complete: ${task.name}\n"
+              "  outputs: ${result.outputs}\n"
+              "  mappings: ${result.mappings}");
+          return result;
+        })
+        .then((TaskResult result) {
+          return _symlinkSources(previousOutDir, taskOutDir)
+              .then((_) => result);
+        })
+        .then((TaskResult taskResult) {
+          assert(taskResult != null);
 
-            // add the outputs to files so subsequent tasks can process them
-            var newFiles = result.outputs.mappedBy((f) =>
-                new InputFile(task.name, f, _taskOutDir(task).toString())).toList();
-            files.addAll(newFiles);
+          buildResult.messages.addAll(taskResult.messages);
+          // mappings are relative paths to the output dir, but the Editor
+          // needs them relative to the project dir
+          for (var file in taskResult.mappings.keys) {
+            var newPath = taskOutDir.append(taskResult.mappings[file]);
+            buildResult.mappings[file] = newPath.toString();
+          }
 
-            return _run(files, previousOutDir: taskOutDir)
-                .then((BuildResult result) {
-                  messages.addAll(result.messages);
-                  var allMappings = mergeMaps([mappings, result.mappings]);
-                  return new BuildResult(messages, mappings);
-                });
-          });
-    } else {
-      return _symlinkSources(previousOutDir, outDir)
-          .then((_) => new BuildResult([], {}));
-    }
+          // add the outputs to files so subsequent tasks can process them
+          var newFiles = taskResult.outputs.mappedBy((f) =>
+              new InputFile(task.name, f, _taskOutDir(task).toString()));
+          allFiles.addAll(newFiles);
+          // remember this tasks output dir for symlinking
+          previousOutDir = taskOutDir;
+
+          return buildResult;
+        });
+    }).then((buildResult) {
+      return _symlinkSources(previousOutDir, outDir).then((_) => buildResult);
+    });
   }
 
   /** Run a [task] on [files]. */
@@ -165,6 +172,19 @@ class Builder {
         });
   }
 
+  /**
+   * Create a symlink from within [outDir] to within [inDir] for every file or
+   * directory in [inDir] that doesn't exist in [outDir].
+   *
+   * This method duplicates the structure of [inDir] in [outDir]. After a task
+   * writes files into it's output directory, it has created a partial
+   * copy/transformation of the source tree from the previous task or source
+   * dir. This method fills in the rest by walking the input directory tree and
+   * symlinking any file or directory no in [outDir]. If a file exists it's
+   * simply skipped. If a directory exists no symlink is created for it, but
+   * it's recursed into. This will create the minimum number of symlinks to
+   * recreate the source tree.
+   */
   Future _symlinkSources(Path inDir, Path outDir) {
     inDir = inDir == null ? sourceDirPath : inDir;
     if (!inDir.isAbsolute) {
@@ -300,6 +320,7 @@ class BuildResult {
   final Map<String, String> mappings;
 
   BuildResult(this.messages, this.mappings);
+  BuildResult.empty() : messages = <String>[], mappings = <String, String>{};
 }
 
 class _Rule {
