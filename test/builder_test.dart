@@ -21,6 +21,7 @@ main() {
 
   var sourcePath = new Path('test/data');
   var buildPath = sourcePath.append(BUILD_DIR);
+  var outPath =  buildPath.append('out');
   var genPath =  sourcePath.append('gen');
 
   tearDown(() {
@@ -68,6 +69,7 @@ main() {
           // check output and gen directories were created
           expect(_dirExists(buildPath), true);
           expect(_dirExists(taskOutPath), true);
+          expect(_dirExists(outPath), true);
           expect(_dirExists(genPath), true);
 
           _logger.fine("mappings: ${result.mappings}");
@@ -164,6 +166,11 @@ bool _dirExists(Path path) => new Directory.fromPath(path).existsSync();
 _deleteDir(Path path) {
   var dir = new Directory.fromPath(path);
   if (dir.existsSync()) {
-    dir.deleteSync(recursive: true);
+    try {
+      // this only fails when running multiple tests and may be a bug in dart:io
+      dir.deleteSync(recursive: true);
+    } on DirectoryIOException catch(e) {
+      _logger.severe("Error deleting $path");
+    }
   }
 }

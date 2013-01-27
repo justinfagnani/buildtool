@@ -2,21 +2,27 @@ library common;
 
 import 'dart:io';
 
-final String BUILD_URL = '/build';
-final String CLOSE_URL = '/close';
-final String STATUS_URL = '/status';
-final String BUILDLOG_FILE = '.buildtool_log';
-final String BUILDLOCK_FILE = '.buildlock';
-final String BUILD_DIR = 'build_out';
-final String OUT_DIR = 'out';
-final String SOURCE_PREFIX = '_source';
+// build server end-points
+const String BUILD_URL = '/build';
+const String CLOSE_URL = '/close';
+const String STATUS_URL = '/status';
+
+// file names
+const String LOG_FILE = '.buildtool_log';
+const String BUILDLOG_FILE = '.buildlog';
+const String BUILDLOCK_FILE = '.buildlock';
+const String BUILD_DIR = 'build_out';
+const String OUT_DIR = 'out';
+const String PACKAGES = 'packages';
+
+const String SOURCE_PREFIX = '_source';
 
 final ContentType JSON_TYPE = new ContentType('application', 'json');
 
 final List<String> EXCLUDED_FILES = [
+  LOG_FILE,
   BUILDLOG_FILE,
   BUILDLOCK_FILE,
-  '.buildlog',
   'pubspec.yaml',
   'pubspec.lock',
   'build.dart',
@@ -25,7 +31,7 @@ final List<String> EXCLUDED_FILES = [
 
 final List<String> EXCLUDED_DIRS = [
   BUILD_DIR,
-  'packages',
+  PACKAGES,
   '.git',
 ];
 

@@ -164,7 +164,7 @@ Future _deleteLockFile() {
 OutputStream _logStream;
 
 Future _createLogFile() {
-  return new File(BUILDLOG_FILE).create().then((log) {
+  return new File(LOG_FILE).create().then((log) {
     _logStream = log.openOutputStream(FileMode.APPEND);
     Logger.root.level = Level.FINE;
     Logger.root.on.record.add((LogRecord r) {

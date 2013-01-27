@@ -27,7 +27,6 @@ class Builder {
   final Path outDir;
 
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
-  final _taskQueue = new Queue<_Rule>();
 
   Builder(Path buildDir, Path genDir, {Path sourceDirPath})
       : sourceDirPath = (sourceDirPath == null)
@@ -86,13 +85,8 @@ class Builder {
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.mappedBy((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString())).toList();
-        _taskQueue.addAll(_rules.values);
         return _run(files);
       });
-// TODO:
-//      .chain((BuildResult) {
-//        // symlink the final output directory
-//      });
   }
 
   /**
@@ -217,7 +211,6 @@ class Builder {
       // When we see a dir, symlink it unless it exists in the output. If it
       // exists in the output, recurse into it.
       ..onDir = (d) {
-        _logger.fine("looking at dir $d");
         if (!d.startsWith(inDir.toString())) {
           // this must be from a symlink outside the directory
           // we should already be skipping this because we know we symlinked it
@@ -265,10 +258,10 @@ class Builder {
       var create = (exists) ? new Future.immediate(true) : dir.create();
       return create.then((_) {
         // create pub symlink
-        var linkPath = buildDirPath.append('packages').toNativePath();
+        var linkPath = buildDirPath.append(PACKAGES).toNativePath();
         if (!dirSymlinkExists(linkPath)) {
           removeBrokenDirSymlink(linkPath);
-          var targetPath = new File('packages').fullPathSync();
+          var targetPath = new File(PACKAGES).fullPathSync();
           return createSymlink(targetPath, linkPath);
         } else {
           return new Future.immediate(null);
@@ -300,7 +293,7 @@ class Builder {
     var completer = new Completer<List<String>>();
     var lister = new RecursiveDirectoryLister.fromPath(sourceDirPath)
       ..onDir = (String dir) {
-        return !dir.endsWith("packages");
+        return !dir.endsWith(PACKAGES);
       }
       ..onFile = (file) {
         files.add(file.substring(sourceDirPath.toString().length + 1));
