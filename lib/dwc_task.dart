@@ -43,7 +43,6 @@ class DwcTask extends Task {
           if (result.outputs[output] != null) {
             var sourcePath = result.outputs[output];
             mappings[sourcePath] = outputPath;
-//            _logger.fine("adding mapping: $sourcePath = $outputPath");
           }
         }
       }

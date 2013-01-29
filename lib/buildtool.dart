@@ -3,55 +3,55 @@
 // BSD-style license that can be found in the LICENSE file.
 
 /**
- * buildtool is a simple build system for Dart that works well standalone or 
+ * buildtool is a simple build system for Dart that works well standalone or
  * with the Dart Editor. buildtool configurations are simple Dart scripts.
- * 
+ *
  * ## Usage ##
- * 
+ *
  * Builds are configured by adding a set of tasks, and the files they should be
  * run against, in a closure provided to [configure].
- * 
- * To add a task, call [addTask] with a list of regexs for matching file names
+ *
+ * To add a task, call [addRule] with a list of regexs for matching file names
  * and a task to run when files matching the regex change.
- * 
+ *
  * Example:
- * 
+ *
  *     main() {
  *       configure(() {
- *         addTask([".*\.html"], new WebComponentsTask());
+ *         addRule('web_ui', new WebComponentsTask(), [".*\.html"]);
  *       });
  *     }
- * 
+ *
  * For convenience, we recommend that developers providing tasks for their
  * tools to also provide a function that helps users register them, so for
  * example a user can simple install a task as follows:
- * 
+ *
  *     import 'package:buildtool/web_components.dart';
- *     
+ *
  *     main() {
  *       configure(() {
  *         webComponents(files: [".*\.html"]);
  *       });
  *     }
- * 
+ *
  * ## Client / Server Architecture ##
- * 
+ *
  * buildtool starts a seperate Dart process to run the build. This is done to
  * reduce startup times, allow the VM to warm up hot code in tasks, and to
  * preserve dependency information in memory.
- * 
+ *
  * The `server` flag controls whether buildtool is running as a server, or as a
  * client.
- * 
+ *
  * When executed as a client, without the `server` flag, the script looks for a
  * running buildtool server by reading the `.buildlock` file. If it can't find
  * running server, it starts one.
- * 
+ *
  * When running as a server, an HTTP server is started which listens for build
  * commands via a JSON-based protocol.
- * 
+ *
  * ## Warning ##
- * 
+ *
  * This library is extremely new and unfinished. It may change at any time.
  */
 library buildtool;
@@ -72,8 +72,8 @@ bool _inConfigure = false;
 /**
  * Adds a new [Task] to this build which is run when files match against the
  * regex patterns in [files].
- * 
- * [addTask] can only be called from within the closure passed to [configure].
+ *
+ * [addTule] can only be called from within the closure passed to [configure].
  */
 Task addRule(String name, Task task, List<String> files) {
   if (!_inConfigure) {
@@ -86,7 +86,7 @@ Task addRule(String name, Task task, List<String> files) {
 /**
  * Configures the build. In [configClosure], [addTask] can be called to add
  * tasks to the build.
- * 
+ *
  * [forceServer] is for debug and development purposes.
  */
 void configure(void configClosure(), {bool forceServer: false}) {
@@ -112,8 +112,8 @@ void _processArgs(bool forceServer) {
     ..addOption("removed", help: "the file was removed since the last build",
         allowMultiple: true)
     ..addFlag("clean", negatable: false, help: "remove any build artifacts")
-    ..addFlag("machine", negatable: false, 
-        help: "print machine parseable messages," 
+    ..addFlag("machine", negatable: false,
+        help: "print machine parseable messages,"
               "used by tools like the Dart editor")
     ..addFlag("quit", negatable: false, help: "quit the build server")
     ..addFlag("help", negatable: false, help: "displays this help and exit");

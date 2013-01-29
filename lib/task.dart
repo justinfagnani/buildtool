@@ -9,7 +9,7 @@ import 'dart:io';
 
 /** A runnable build task */
 abstract class Task {
-  /** */
+
   final String name;
 
   Task(String this.name);

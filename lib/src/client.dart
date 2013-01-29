@@ -29,7 +29,7 @@ void clientMain(ArgResults args) {
     });
   } else {
     var changedFiles = args['changed'];
-    var filteredFiles = changedFiles.where(isValidInputFile);
+    var filteredFiles = changedFiles.where(isValidInputFile).toList();
     if (args['machine'] && filteredFiles.isEmpty) {
       _logger.info("no changed files");
     } else {
@@ -82,7 +82,7 @@ Future<Map> _sendBuildCommand(
  * representation of [data] as the request body. The response is parsed as JSON
  * and returned via a Future
  */
-Future<dynamic> _sendJsonCommand(int port, String path, {var data,
+Future _sendJsonCommand(int port, String path, {var data,
     bool isRetry: false}) {
   var completer = new Completer();
   var client = new HttpClient();

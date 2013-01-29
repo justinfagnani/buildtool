@@ -5,19 +5,19 @@
 library builder_test;
 
 import 'dart:io';
-import 'package:logging/logging.dart';
-import 'package:unittest/unittest.dart';
-
 import 'package:buildtool/src/builder.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/utils.dart';
+import 'package:logging/logging.dart';
+import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
 
 var _logger = new Logger("builder_test");
 
 main() {
-  Logger.root.on.record.add(printLogRecord);
-  Logger.root.level = Level.FINE;
+//  Unncomment for verbose output during tests
+//  Logger.root.on.record.add(printLogRecord);
+//  Logger.root.level = Level.FINE;
 
   var sourcePath = new Path('test/data');
   var buildPath = sourcePath.append(BUILD_DIR);
@@ -33,23 +33,15 @@ main() {
     var builder = new Builder(buildPath, genPath);
     var task = new MockTask('task');
     builder.addRule('task', task, []);
-    try {
-      builder.addRule('task', task, []);
-      fail('exected exception on duplicate names');
-    } on ArgumentError catch (e) {
-      // pass
-    }
+    expect(() => builder.addRule('task', task, []),
+        throwsA(predicate((e) => e is ArgumentError)));
   });
 
   test('bad dependency', () {
     var builder = new Builder(buildPath, genPath);
     var task = new MockTask('task1');
-    try {
-      builder.addRule('task1', task, ['task2:*.html']);
-      fail('exected exception unknown task');
-    } on ArgumentError catch (e) {
-      expect(e.message, stringContainsInOrder(['task2']));
-    }
+    expect(() => builder.addRule('task1', task, ['task2:*.html']),
+        throwsA(predicate((e) => e.message.contains('task2'))));
   });
 
   test('single task', () {
@@ -81,7 +73,8 @@ main() {
           var out1File = new File(out1Path);
           expect(out1File.existsSync(), true);
           // should be a real file in the task output dir
-          expect(out1File.fullPathSync(), endsWith('data/build_out/_mock/test.html'));
+          expect(out1File.fullPathSync(),
+              endsWith('data/build_out/_mock/test.html'));
 
           var out2File = new File(out2Path);
           expect(out2File.existsSync(), true);
@@ -125,7 +118,7 @@ main() {
   });
 
 //  Disabling this test for now, since direct inter task dependencies are not
-//  completely defined of implemented yet, but if they were this test might
+//  completely defined or implemented yet, but if they were this test might
 //  pass as is, so leaving it as a partial spec.
 //
 //  test('dependent tasks', () {

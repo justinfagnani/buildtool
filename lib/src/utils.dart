@@ -11,7 +11,7 @@ import 'package:logging/logging.dart';
 
 /**
  * Similar to [Iterable.reduce], except that [combine] is an async function
- * returns a [Future].
+ * that returns a [Future].
  *
  * Reduce a collection to a single value by iteratively combining each element
  * of the collection with an existing value using the provided function. Use
@@ -91,6 +91,7 @@ class RecursiveDirectoryLister implements DirectoryLister {
     : _lister = dir.list(),
       _futureGroup = new FutureGroup() {
 
+    _futureGroup.add(completer.future);
     _lister.onDir = _onDirHelper;
     _lister.onFile = _onFileHelper;
     _lister.onDone = _onDoneHelper;
@@ -130,7 +131,6 @@ class RecursiveDirectoryLister implements DirectoryLister {
   }
 
   void set onDone(void onDone(bool completed)) {
-    _futureGroup.add(completer.future);
     _futureGroup.future.then((List values) {
       onDone(values.every((f) => f));
     });

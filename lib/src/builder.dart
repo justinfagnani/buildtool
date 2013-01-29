@@ -26,6 +26,7 @@ class Builder {
   final Path genDir;
   final Path outDir;
 
+  // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
 
   Builder(Path buildDir, Path genDir, {Path sourceDirPath})
@@ -84,7 +85,7 @@ class Builder {
       .then((List<String> filteredFiles) {
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.mappedBy((f) =>
-            new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString())).toList();
+            new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
         return _run(files);
       });
   }
@@ -96,10 +97,10 @@ class Builder {
    *
    * Returns a [BuildResult] combining the results of all task runs.
    */
-  Future<BuildResult> _run(List<InputFile> files) {
+  Future<BuildResult> _run(Iterable<InputFile> files) {
     // copy files so we can add the output of tasks to it
     var allFiles = new List.from(files);
-    Path previousOutDir;
+    var prevOutDir;
 
     // Run an async function on every rule that runs the rule, symlinks it's
     // output directory and updates the BuildResult. We reduce the list of
@@ -119,20 +120,14 @@ class Builder {
       var taskOutDir = _taskOutDir(task);
 
       return _runTask(task, matches)
-        .then((TaskResult result) {
+        .then((result) {
           _logger.info(
               "Task complete: ${task.name}\n"
               "  outputs: ${result.outputs}\n"
               "  mappings: ${result.mappings}");
-          return result;
-        })
-        .then((TaskResult result) {
-          return _symlinkSources(previousOutDir, taskOutDir)
-              .then((_) => result);
+          return _symlinkSources(prevOutDir, taskOutDir).then((_) => result);
         })
         .then((TaskResult taskResult) {
-          assert(taskResult != null);
-
           buildResult.messages.addAll(taskResult.messages);
           // mappings are relative paths to the output dir, but the Editor
           // needs them relative to the project dir
@@ -146,12 +141,12 @@ class Builder {
               new InputFile(task.name, f, _taskOutDir(task).toString()));
           allFiles.addAll(newFiles);
           // remember this tasks output dir for symlinking
-          previousOutDir = taskOutDir;
+          prevOutDir = taskOutDir;
 
           return buildResult;
         });
     }).then((buildResult) {
-      return _symlinkSources(previousOutDir, outDir).then((_) => buildResult);
+      return _symlinkSources(prevOutDir, outDir).then((_) => buildResult);
     });
   }
 
@@ -187,15 +182,12 @@ class Builder {
     _logger.fine("symlinking sources from $inDir to $outDir");
     var completer = new Completer();
 
-    // we walk the inDir tree
+    // walk the inDir tree
     var lister = new RecursiveDirectoryLister.fromPath(inDir)
-      // when we see a file (TODO: which might be a broken dir symlink)
-      // symlink that file in the outDir, unless it already exists
+      // when we see a file, symlink that file in the outDir, unless it already
+      // exists
       ..onFile = (f) {
         if (!f.startsWith(inDir.toString())) {
-          // this must be from a symlink outside the directory
-          // we should already be skipping this because we know we symlinked it
-          // in a previous pass, but right now we'll skip it here
           return;
         }
         var relativePath = f.substring(inDir.toString().length + 1);
@@ -203,7 +195,8 @@ class Builder {
           var linkPath = outDir.append(relativePath);
           var file = new File.fromPath(outDir.append(relativePath));
           if (!file.existsSync()) {
-            // TODO: how do we validate the file? could it be a broken symlink?
+            // TODO(justinfagnani): how do we validate the file? could it be a
+            // broken symlink?
             createSymlink(f, linkPath.toString());
           }
         }
@@ -228,7 +221,7 @@ class Builder {
         var file = new File.fromPath(linkPath);
 
         if (dir.existsSync()) {
-          // TODO: check that dir is not a symlink
+          // TODO(justinfagnani): check that dir is not a symlink
           // recurse so we can symlink files/dirs further down in the tree
           // unless it's the packages symlink
           return !d.endsWith("packages");
