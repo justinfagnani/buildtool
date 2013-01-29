@@ -82,7 +82,7 @@ Future<Map> _sendBuildCommand(
  * representation of [data] as the request body. The response is parsed as JSON
  * and returned via a Future
  */
-Future _sendJsonCommand(int port, String path, {var data,
+Future<dynamic> _sendJsonCommand(int port, String path, {Object data,
     bool isRetry: false}) {
   var completer = new Completer();
   var client = new HttpClient();

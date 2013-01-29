@@ -14,21 +14,10 @@ main() {
     var data = [1, 2, 3];
 
     // define an async function, this sums the inputs
-    Future<int> sum(int a, int b) => defer(() => a + b);
+    Future<int> sum(int a, int b) => new Future.immediate(a + b);
 
     reduceAsync(data, 0, expectAsync2(sum, data.length)).then((result) {
       expect(result, 6);
     });
   });
-}
-
-Future defer(callback()) {
-  var port = new ReceivePort();
-  var completer = new Completer();
-  port.receive((m, r) {
-    port.close();
-    completer.complete(callback());
-  });
-  port.toSendPort().send(null);
-  return completer.future;
 }
