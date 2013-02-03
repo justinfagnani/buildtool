@@ -68,7 +68,7 @@ class Builder {
       List<String> removedFiles,
       {bool clean: false}) {
 
-    _logger.info("starting build");
+    _logger.info("Starting build");
 
     var initTasks = [];
     if (clean) {
@@ -77,15 +77,18 @@ class Builder {
     return Future.wait(initTasks)
       .then((_) => _createDirs())
       .then((_) {
+        _logger.info("Initialization tasks complete");
         // get the files to operate on
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
             : new Future.immediate(changedFiles.where(isValidInputFile).toList());
       })
       .then((List<String> filteredFiles) {
+        _logger.info("Running tasks on ${filteredFiles.length} files");
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.mappedBy((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
+
         return _run(files);
       });
   }
@@ -154,7 +157,14 @@ class Builder {
   Future<TaskResult> _runTask(Task task, Iterable<InputFile> files) {
     var taskOutDir = _taskOutDir(task);
     return _createBuildDir(taskOutDir)
-        .then((_) => task.run(files, taskOutDir, genDir))
+        .then((_) {
+          _logger.info("Running ${task.name} on $files");
+          return task.run(files, sourceDirPath, taskOutDir, genDir)
+              .catchError((AsyncError e) {
+                _logger.severe("Error running task ${task.name}: $e");
+                throw e;
+              });
+        })
         .then((TaskResult result) {
           _logger.fine("task ${task.name} mappings: ${result.mappings}");
           return result;
@@ -289,7 +299,8 @@ class Builder {
         return !dir.endsWith(PACKAGES);
       }
       ..onFile = (file) {
-        files.add(file.substring(sourceDirPath.toString().length + 1));
+        var relativePath = new Path(file).relativeTo(sourceDirPath);
+        files.add(relativePath.toString());
       }
       ..onDone = (s) {
         completer.complete(files);

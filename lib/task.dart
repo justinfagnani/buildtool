@@ -18,11 +18,13 @@ abstract class Task {
    * Called to run the task.
    *
    * [files] contains a list of changed paths, not necessarily all files
-   * covered by this task in the project. [outDir] is where final build
-   * artifacts must be written to, [genDir] is where generated files that can
-   * be referenced by code should be written to.
+   * covered by this task in the project. [baseDir] is the directory containing
+   * the input files, all relative paths are relative to this directory.
+   * [outDir] is where final build artifacts must be written to, [genDir] is
+   * where generated files that can be referenced by code should be written to.
    */
-  Future<TaskResult> run(List<InputFile> files, Path outDir, Path genDir);
+  Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
+      Path genDir);
 
   /** Returns a file pattern for matching output of this task using [pattern] */
   String out(String pattern) => '$name:$pattern';
@@ -53,7 +55,7 @@ class InputFile {
   }
 
   /** The location of the file on disk. */
-  Path get inputPath => new Path(dir).join(new Path(path));
+  Path get inputPath => (dir == null) ? new Path(path) : new Path(dir).join(new Path(path));
 
   String get matchString => '$task:$path';
 

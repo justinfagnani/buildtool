@@ -112,6 +112,8 @@ void _processArgs(bool forceServer) {
     ..addOption("removed", help: "the file was removed since the last build",
         allowMultiple: true)
     ..addFlag("clean", negatable: false, help: "remove any build artifacts")
+    ..addFlag("full", negatable: false,
+        help: "unimplemented: perform a full build.")
     ..addFlag("machine", negatable: false,
         help: "print machine parseable messages,"
               "used by tools like the Dart editor")

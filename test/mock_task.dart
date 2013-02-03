@@ -25,7 +25,8 @@ class MockTask extends Task {
    * * `mappings` with all inputs mapped to their output
    * * A single message of `'message'`
    */
-  Future<TaskResult> run(List<InputFile> files, Path outDir, Path genDir) {
+  Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
+      Path genDir) {
     Logger.root.level = Level.FINE;
     _logger.info("files: $files");
     this.files = files;

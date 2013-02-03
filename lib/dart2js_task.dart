@@ -26,9 +26,10 @@ class Dart2JSTask extends Task {
 
   Dart2JSTask(String name) : super(name);
 
-  Future<TaskResult> run(List<InputFile> files, Path outDir, Path genDir) {
+  Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
+      Path genDir) {
     _logger.info("dart2js task starting. files: $files");
-    var futureGroup = new FutureGroup();
+    var futureGroup = new FutureGroup<ProcessResult>();
     for (var file in files) {
       var outPath = outDir.append('${file.path}.js');
       var outFileDir = outPath.directoryPath;
@@ -50,12 +51,11 @@ class Dart2JSTask extends Task {
           return result;
         }));
     }
-    return futureGroup.future.then((_) {
+    return futureGroup.future.then((values) {
       _logger.info("dartjs tasks complete");
       var messages = [];
-      var success = futureGroup.futures.every((f) => f.value.exitCode == 0);
-      for (var f in futureGroup.futures) {
-        ProcessResult r = f.value;
+      var success = values.every((v) => v.exitCode == 0);
+      for (var r in values) {
         messages.add(r.stdout);
         messages.add(r.stderr);
       }

@@ -52,12 +52,7 @@ void _buildHandler(HttpRequest req, HttpResponse res) {
     }).then((str) {
       var data = parse(str);
       builder.build(data['changed'], data['removed'], clean: data['clean'])
-        .catchError((e) {
-          _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
-          _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
-          return true;
-        })
-        .then((result) {
+        .then((BuildResult result) {
           var mappings = [];
           for (var source in result.mappings.keys) {
             mappings.add({'from': source, 'to': result.mappings[source]});
@@ -69,6 +64,11 @@ void _buildHandler(HttpRequest req, HttpResponse res) {
           };
           _logger.fine("data: $data");
           _jsonReply(res, data);
+        },
+        onError: (e) {
+          _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
+          _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+          throw e;
         });
     });
 }

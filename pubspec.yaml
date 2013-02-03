@@ -1,12 +1,12 @@
-name:  buildtool
-description:  A simple build system for Dart.
+name: buildtool
 version: 0.0.1
-author: "Dart Team <misc@dartlang.org>"
+author: Dart Team <misc@dartlang.org>
+description: A simple build system for Dart.
 homepage: https://github.com/dart-lang/buildtool
-
 dependencies:
   args: any
+  http: any
+  logging: any
   unittest: any
   #TODO: make dwc depend on buildtool
   web_ui: any
-  logging: any

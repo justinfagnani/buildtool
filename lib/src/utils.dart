@@ -157,17 +157,17 @@ class RecursiveDirectoryLister implements DirectoryLister {
 
 /** A future that waits until all added [Future]s complete. */
 // TODO(sigmund): this should be part of the futures/core libraries.
-class FutureGroup {
+class FutureGroup<E> {
   const _FINISHED = -1;
 
   int _count = 0;
   int _pending = 0;
-  Future _failedTask;
-  final Completer<List> _completer = new Completer<List>();
-  final List _values = [];
+  Future<E> _failedTask;
+  final Completer<List<E>> _completer = new Completer<List<E>>();
+  final List<E> _values = <E>[];
 
   /** Gets the task that failed, if any. */
-  Future get failedTask => _failedTask;
+  Future<E> get failedTask => _failedTask;
 
   /**
    * Wait for [task] to complete.
@@ -178,7 +178,7 @@ class FutureGroup {
    * If this group has a [failedTask], new tasks will be ignored, because the
    * error has already been signaled.
    */
-  void add(Future task) {
+  void add(Future<E> task) {
     if (_failedTask != null) return;
     if (_pending == _FINISHED) throw new StateError("Future already completed");
 
@@ -186,7 +186,7 @@ class FutureGroup {
     _count++;
     _pending++;
     _values.add(null);
-    task.then((value) {
+    task.then((E value) {
       if (_failedTask != null) return;
       _values[index] = value;
       _pending--;
@@ -201,5 +201,5 @@ class FutureGroup {
     });
   }
 
-  Future<List> get future => _completer.future;
+  Future<List<E>> get future => _completer.future;
 }

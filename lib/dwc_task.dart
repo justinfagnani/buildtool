@@ -20,12 +20,12 @@ class DwcTask extends Task {
 
   DwcTask(String name) : super(name);
 
-  Future<TaskResult> run(List<InputFile> files, Path outDir, Path genDir) {
-
+  Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
+      Path genDir) {
     var futures = <Future<dwc.CompilerResult>>[];
 
     for (var file in files) {
-      var fileOutDir = outDir.join(file.inputPath).directoryPath;
+      var fileOutDir = outDir.append(file.path).directoryPath;
       var args = ['--out', outDir.toString()];
       var basedir = (file.dir != null) ? file.dir : '.';
       args.addAll(['--basedir', basedir]);
