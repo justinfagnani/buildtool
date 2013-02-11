@@ -6,11 +6,15 @@ library mock_task;
 
 import 'dart:async';
 import 'dart:io';
-
+import 'package:buildtool/buildtool.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
 
 var _logger = new Logger("MockTask");
+
+mockTask({String name: 'mock', List<String> files}) {
+  addRule(name, new MockTask(name), files);
+}
 
 class MockTask extends Task {
   List<InputFile> files = [];

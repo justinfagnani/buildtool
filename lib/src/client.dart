@@ -8,8 +8,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:json';
 import 'dart:uri';
-import 'package:args/args.dart';
-import 'package:buildtool/buildtool.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/utils.dart';
 import 'package:http/http.dart' as http;
@@ -18,40 +16,22 @@ import 'package:logging/logging.dart';
 Logger _logger = new Logger('client');
 
 typedef http.Client HttpClientFactory();
-typedef Future<Process> ScriptRunner(String file);
 
 _defaultHttpClientFactory() => new http.Client();
-
-_defaultRunScript(String file) {
-  var vmExecutable = new Options().executable;
-  return Process.start(vmExecutable, [file]);
-}
-
-Future<bool> clientMain(ArgResults args) =>
-  new ClientStarter(args).run();
 
 /**
  * Client to a BuildServer.
  */
-class BuildClient {
+class Client {
   int port;
-
-  final bool machine;
-  final bool clean;
-  final List<String> changedFiles;
-  final List<String> removedFiles;
 
   final HttpClientFactory httpClientFactory;
   final OutputStream _outputStream;
   var _connectionErrorHandler;
 
-  BuildClient(
+  Client(
     this.port,
-    { this.machine: false,
-    this.clean: false,
-    this.changedFiles: const [],
-    this.removedFiles: const [],
-    OutputStream outputStream,
+    { OutputStream outputStream,
     this.httpClientFactory: _defaultHttpClientFactory})
       : _outputStream = (outputStream == null) ? stdout : outputStream {
 
@@ -75,7 +55,10 @@ class BuildClient {
     return _sendCloseCommand();
   }
 
-  Future<bool> build() {
+  Future<bool> build({bool clean: false,
+      bool machine: false,
+      List<String> changedFiles: const [],
+      List<String> removedFiles: const []}) {
     _logger.info("Build...");
     var filteredFiles = changedFiles.where(isValidInputFile).toList();
     if (machine && filteredFiles.isEmpty) {
@@ -136,6 +119,7 @@ class BuildClient {
     // Send request and handle response
     return client.send(request).then((http.StreamedResponse response) {
       return response.stream.bytesToString().then((body) {
+        client.close();
         return parse(body);
       });
     }).catchError((e) {
@@ -163,88 +147,3 @@ class BuildClient {
   }
 }
 
-final int _CONNECTION_REFUSED = 61;
-
-class ClientStarter {
-  final ScriptRunner _runScript;
-  final ArgResults args;
-
- ClientStarter(ArgResults this.args, {
-    ScriptRunner this._runScript: _defaultRunScript});
-
-  Future<bool> run() {
-    int retryCount = 0;
-    return _getServerPort().then((port) {
-      var client = new BuildClient(
-          port,
-          machine: args['machine'],
-          clean: args['clean'],
-          changedFiles: args['changed'],
-          removedFiles: args['removed']);
-      client.onConnectionError = (e) {
-        if (e is SocketIOException &&
-            e.osError.errorCode == _CONNECTION_REFUSED &&
-            retryCount < 1) {
-          return _startServer().then((port) {
-            _logger.fine("restarted server on port $port");
-            return port;
-          });
-        }
-      };
-      if (args['quit']) {
-        return client.quit();
-      } else {
-        return client.build();
-      }
-    });
-  }
-
-  /**
-   * Returns the port of the running builtool server, or starts a new server.
-   */
-  Future<int> _getServerPort() {
-    var completer = new Completer();
-    var lockFile = new File(BUILDLOCK_FILE);
-    lockFile.exists().then((exists) {
-      if (exists) {
-        var sb = new StringBuffer();
-        var sis = new StringInputStream(lockFile.openInputStream());
-        sis
-          ..onData = () {
-            sb.add(sis.read());
-          }
-          ..onClosed = () {
-            try {
-              var port = int.parse(sb.toString());
-              _logger.fine("server already running onport: $port");
-              completer.complete(port);
-            } on Error catch (e) {
-              completer.completeError(e);
-            }
-          };
-      } else {
-        _startServer().then((v) => completer.complete(v));
-      }
-    });
-    return completer.future;
-  }
-
-  Future<int> _startServer() {
-    var completer = new Completer();
-    var vmExecutable = new Options().executable;
-    _runScript("packages/buildtool/src/server.dart").then((process) {
-      var sis = new StringInputStream(process.stdout);
-      sis.onData = () {
-        var line = sis.readLine();
-        _logger.fine(line);
-        if (line.startsWith("port: ")) {
-          var port = int.parse(line.substring("port: ".length));
-          completer.complete(port);
-        } else if (line.startsWith("error")) {
-          completer.completeError("error");
-        }
-      };
-    });
-    return completer.future;
-  }
-}

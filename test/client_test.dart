@@ -11,18 +11,18 @@ import 'package:args/args.dart';
 import 'package:buildtool/src/client.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/utils.dart';
-import 'package:http/http.dart';
-import 'package:http/testing.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http;
 import 'package:unittest/mock.dart';
 import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
 
-class ProcessMock extends Mock implements Process {}
+//class ProcessMock extends Mock implements Process {}
 
 main() {
   test('BuildClient.build', () {
     var requestBody;
-    var httpClientMock = new MockClient((request) {
+    var httpClientMock = new http.MockClient((request) {
       if (request.url.path == '/build') {
         requestBody = parse(request.body);
         expect(requestBody, containsPair('changed', ['a']));
@@ -34,20 +34,20 @@ main() {
             'messages': ['message1'],
             'mappings': [{'from': 'a', 'to': 'b'}],
           });
-        return new Response(json, 200);
+        return new http.Response(json, 200);
       }
     });
     var port = 12345;
     var clientOut = new ListOutputStream();
 
-    var client = new BuildClient(port,
-        clean: true,
-        changedFiles: ['a'],
-        removedFiles: ['b'],
+    var client = new Client(port,
         outputStream: clientOut,
         httpClientFactory: () => httpClientMock);
 
-    client.build().then(expectAsync1((_) {
+    client.build(
+        clean: true,
+        changedFiles: ['a'],
+        removedFiles: ['b']).then(expectAsync1((_) {
       List response = parse(decodeUtf8(clientOut.read()));
       expect(response.length, 1);
       expect(response, contains(equals(

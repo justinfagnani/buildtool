@@ -56,22 +56,26 @@
  */
 library buildtool;
 
+import 'dart:async';
 import 'dart:io';
-import 'dart:json';
 import 'package:args/args.dart';
-import 'package:logging/logging.dart';
-import 'package:buildtool/glob.dart';
+import 'package:buildtool/src/builder.dart';
 import 'package:buildtool/src/client.dart';
+import 'package:buildtool/src/common.dart';
+import 'package:buildtool/src/launcher.dart';
 import 'package:buildtool/src/server.dart';
 import 'package:buildtool/task.dart';
+import 'package:logging/logging.dart';
 
 bool _isServer;
 var _args;
 bool _inConfigure = false;
 
+Builder _builder;
+
 /**
  * Adds a new [Task] to this build which is run when files match against the
- * regex patterns in [files].
+ * [Glob] patterns in [files].
  *
  * [addTule] can only be called from within the closure passed to [configure].
  */
@@ -79,9 +83,11 @@ Task addRule(String name, Task task, List<String> files) {
   if (!_inConfigure) {
     throw new StateError("addTask must be called inside a configure() call.");
   }
-  builder.addRule(name, task, files);
+  _builder.addRule(name, task, files);
   return task;
 }
+
+final Logger _logger = new Logger('buildtool');
 
 /**
  * Configures the build. In [configClosure], [addTask] can be called to add
@@ -89,17 +95,40 @@ Task addRule(String name, Task task, List<String> files) {
  *
  * [forceServer] is for debug and development purposes.
  */
+/*
+ * For code readers: configure() is called by a project's build.dart file.
+ * build.dart is run one of two ways:
+ *   1) As the interface to buildtool, usually launched by the Editor, but
+ *      possibly from the command-line. In this mode all it does is communicate
+ *      to the buildtool server, and launch it if necessary. The configuration
+ *      is not used.
+ *   2) As the buildtool server, if the --server flag is present. In this mode
+ *      it launches an HTTP server and listens for build commands. The
+ *      configuration is used here to create a Builder.
+ */
 void configure(void configClosure(), {bool forceServer: false}) {
   _processArgs(forceServer);
+  // baseDir is where build.dart, source files and .buildlock are located.
+  var baseDir = new Path(new Options().script).directoryPath;
+  if (baseDir.toString() == '') {
+    baseDir = new Path(new Directory.current().path);
+  }
   if (_isServer == true) {
-    serverSetup().then((_) {
+    var server = new Server((Builder builder) {
+      _builder = builder;
       _inConfigure = true;
       configClosure();
       _inConfigure = false;
-      serverMain();
-    });
+    }, baseDir);
+    server.start();
   } else {
-    clientMain(_args);
+    new Launcher(
+        baseDir: baseDir,
+        machine: _args['machine'],
+        clean: _args['clean'],
+        quit: _args['quit'],
+        changed: _args['changed'],
+        removed: _args['removed']).run();
   }
 }
 
