@@ -17,6 +17,7 @@ const String BUILDLOG_FILE = '.buildlog';
 const String BUILDLOCK_FILE = '.buildlock';
 const String BUILD_DIR = 'build_out';
 const String GEN_DIR = 'packages/gen';
+const String DEPLOY_DIR = 'deploy';
 const String OUT_DIR = 'out';
 const String PACKAGES = 'packages';
 

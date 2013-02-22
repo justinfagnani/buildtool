@@ -6,7 +6,7 @@ library utils_test;
 
 import 'dart:async';
 import 'dart:isolate';
-import 'package:buildtool/src/utils.dart';
+import 'package:buildtool/src/util/async.dart';
 import 'package:unittest/unittest.dart';
 
 main() {

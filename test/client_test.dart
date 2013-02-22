@@ -10,14 +10,11 @@ import 'dart:utf';
 import 'package:args/args.dart';
 import 'package:buildtool/src/client.dart';
 import 'package:buildtool/src/common.dart';
-import 'package:buildtool/src/utils.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http;
 import 'package:unittest/mock.dart';
 import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
-
-//class ProcessMock extends Mock implements Process {}
 
 main() {
   test('BuildClient.build', () {

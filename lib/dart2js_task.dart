@@ -9,7 +9,7 @@ import 'dart:io';
 import 'dart:uri';
 import 'package:buildtool/buildtool.dart';
 import 'package:buildtool/task.dart';
-import 'package:buildtool/src/utils.dart';
+import 'package:buildtool/src/util/future_group.dart';
 import 'package:logging/logging.dart';
 
 Logger get _logger => new Logger('dart2js');

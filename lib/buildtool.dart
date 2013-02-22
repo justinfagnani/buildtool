@@ -106,8 +106,9 @@ final Logger _logger = new Logger('buildtool');
  *      it launches an HTTP server and listens for build commands. The
  *      configuration is used here to create a Builder.
  */
-void configure(void configClosure(), {bool forceServer: false}) {
-  _processArgs(forceServer);
+void configure(void configClosure(), {bool forceServer: false,
+  bool forceDeploy: false}) {
+  _processArgs(forceServer: forceServer, forceDeploy: forceDeploy);
   // baseDir is where build.dart, source files and .buildlock are located.
   var baseDir = new Path(new Options().script).directoryPath;
   if (baseDir.toString() == '') {
@@ -126,6 +127,7 @@ void configure(void configClosure(), {bool forceServer: false}) {
         baseDir: baseDir,
         machine: _args['machine'],
         clean: _args['clean'],
+        deploy: _args['deploy'],
         quit: _args['quit'],
         changed: _args['changed'],
         removed: _args['removed']).run();
@@ -133,7 +135,7 @@ void configure(void configClosure(), {bool forceServer: false}) {
 }
 
 /** Handle --changed, --removed, --clean and --help command-line args. */
-void _processArgs(bool forceServer) {
+void _processArgs({bool forceServer, bool forceDeploy}) {
   var parser = new ArgParser()
     ..addFlag("server", help: "run buildtool as a long-running server")
     ..addOption("changed", help: "the file has changed since the last build",
@@ -141,6 +143,7 @@ void _processArgs(bool forceServer) {
     ..addOption("removed", help: "the file was removed since the last build",
         allowMultiple: true)
     ..addFlag("clean", negatable: false, help: "remove any build artifacts")
+    ..addFlag("deploy", defaultsTo: forceDeploy, help: "build a deploy directory")
     ..addFlag("full", negatable: false,
         help: "unimplemented: perform a full build.")
     ..addFlag("machine", negatable: false,

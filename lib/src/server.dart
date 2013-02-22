@@ -10,7 +10,7 @@ import 'dart:isolate';
 import 'dart:json';
 import 'package:buildtool/src/builder.dart';
 import 'package:buildtool/src/common.dart';
-import 'package:buildtool/src/utils.dart';
+import 'package:buildtool/src/util/io.dart';
 import 'package:logging/logging.dart';
 
 final Logger _logger = new Logger('server');
@@ -25,7 +25,7 @@ class Server {
       : _builder = (builder != null)
             ? builder
             : new Builder(new Path(BUILD_DIR), new Path(GEN_DIR),
-                sourceDirPath: baseDir);
+                new Path(BUILD_DIR).append(DEPLOY_DIR), sourceDirPath: baseDir);
 
   Future<bool> start() {
     return _createLogFile().then((_) {
@@ -63,7 +63,10 @@ class Server {
         return true;
       }).then((str) {
         var data = parse(str);
-        _builder.build(data['changed'], data['removed'], clean: data['clean'])
+        _logger.info("build command received data: $data");
+
+        _builder.build(data['changed'], data['removed'], clean: data['clean'],
+            deploy: data['deploy'])
           .then((BuildResult result) {
             var mappings = [];
             for (var source in result.mappings.keys) {

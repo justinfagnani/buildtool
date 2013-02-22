@@ -7,7 +7,6 @@ library builder_test;
 import 'dart:io';
 import 'package:buildtool/src/builder.dart';
 import 'package:buildtool/src/common.dart';
-import 'package:buildtool/src/utils.dart';
 import 'package:logging/logging.dart';
 import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
@@ -16,12 +15,14 @@ var _logger = new Logger("builder_test");
 
 main() {
 //  Unncomment for verbose output during tests
-//  Logger.root.on.record.add(printLogRecord);
+//  Logger.root.on.record.add((r) =>
+//      print("${r.loggerName} ${r.level} ${r.message}"));
 //  Logger.root.level = Level.FINE;
 
   var sourcePath = new Path('test/data');
   var buildPath = sourcePath.append(BUILD_DIR);
   var outPath =  buildPath.append('out');
+  var deployPath =  buildPath.append('deploy');
   var genPath =  sourcePath.append('gen');
 
   tearDown(() {
@@ -30,7 +31,7 @@ main() {
   });
 
   test('addRule duplicate names', () {
-    var builder = new Builder(buildPath, genPath);
+    var builder = new Builder(buildPath, genPath, deployPath);
     var task = new MockTask('task');
     builder.addRule('task', task, []);
     expect(() => builder.addRule('task', task, []),
@@ -38,7 +39,7 @@ main() {
   });
 
   test('bad dependency', () {
-    var builder = new Builder(buildPath, genPath);
+    var builder = new Builder(buildPath, genPath, deployPath);
     var task = new MockTask('task1');
     expect(() => builder.addRule('task1', task, ['task2:*.html']),
         throwsA(predicate((e) => e.message.contains('task2'))));
@@ -52,7 +53,8 @@ main() {
     var out2Path = taskOutPath.append(file2Path).toString();
 
     var task = new MockTask('mock');
-    var builder = new Builder(buildPath, genPath, sourceDirPath: sourcePath);
+    var builder = new Builder(buildPath, genPath, deployPath,
+        sourceDirPath: sourcePath);
     builder.addRule('mock', task, ["*.html"]);
 
     builder.build([file1Path, file2Path], [], clean: false)
@@ -84,7 +86,7 @@ main() {
 
           // check that the mock task only received [file1Path], and not
           // [file2Path] or other files
-          expect(task.files.mappedBy((f) => f.path), [file1Path]);
+          expect(task.files.map((f) => f.path), [file1Path]);
 
           // check task dirs set correctly
           // must convert Paths to Strings for equality
@@ -105,7 +107,7 @@ main() {
     var out1Path = task1OutPath.append(file1Path).toString();
     var out2Path = task2OutPath.append(file2Path).toString();
 
-    var builder = new Builder(buildPath, genPath, sourceDirPath: sourcePath);
+    var builder = new Builder(buildPath, genPath, deployPath, sourceDirPath: sourcePath);
     builder.addRule('task1', task1, ["*.html"]);
     builder.addRule('task2', task2, ["*.txt"]);
 
@@ -144,7 +146,7 @@ main() {
         .createSync(recursive: true);
     new Directory.fromPath(genPath.append('trash'))
         .createSync(recursive: true);
-    var builder = new Builder(buildPath, genPath);
+    var builder = new Builder(buildPath, genPath, deployPath);
     builder.build(['a.html'], [], clean: true).then(expectAsync1((result) {
       expect(false,
           new Directory.fromPath(buildPath.append('trash')).existsSync());

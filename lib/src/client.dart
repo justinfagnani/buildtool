@@ -9,7 +9,6 @@ import 'dart:io';
 import 'dart:json';
 import 'dart:uri';
 import 'package:buildtool/src/common.dart';
-import 'package:buildtool/src/utils.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
@@ -55,7 +54,9 @@ class Client {
     return _sendCloseCommand();
   }
 
-  Future<bool> build({bool clean: false,
+  Future<bool> build({
+      bool clean: false,
+      bool deploy: false,
       bool machine: false,
       List<String> changedFiles: const [],
       List<String> removedFiles: const []}) {
@@ -65,7 +66,7 @@ class Client {
       _logger.info("no changed files");
       return new Future.immediate(true);
     } else {
-      return _sendBuildCommand(filteredFiles, clean).then((Map result) {
+      return _sendBuildCommand(filteredFiles, clean, deploy).then((Map result) {
         List<Map<String, String>> mappingList = result['mappings'];
         for (var mapping in mappingList) {
           var message = stringify([{
@@ -91,11 +92,13 @@ class Client {
   /** Sends a JSON-formatted build command to the build server via HTTP POST. */
   Future<Map> _sendBuildCommand(
       Iterable<String> changedFiles,
-      bool cleanBuild) {
+      bool cleanBuild,
+      bool deploy) {
     return _sendJsonCommand(BUILD_URL, data: {
       'changed': changedFiles.toList(),
       'removed': [],
       'clean': cleanBuild,
+      'deploy': deploy,
     });
   }
 

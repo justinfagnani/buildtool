@@ -10,7 +10,8 @@ import 'dart:io';
 import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/symlink.dart';
-import 'package:buildtool/src/utils.dart';
+import 'package:buildtool/src/util/async.dart';
+import 'package:buildtool/src/util/recursive_directory_lister.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
 
@@ -25,17 +26,19 @@ class Builder {
   final Path buildDir;
   final Path genDir;
   final Path outDir;
+  final Path deployDir;
 
   // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
 
-  Builder(Path buildDir, Path genDir, {Path sourceDirPath})
+  Builder(Path buildDir, Path genDir, Path deployDir, {Path sourceDirPath})
       : sourceDirPath = (sourceDirPath == null)
             ? new Path(new Directory.current().path)
             : sourceDirPath,
         buildDir = buildDir,
         genDir = genDir,
-        outDir = buildDir.append(OUT_DIR);
+        outDir = buildDir.append(OUT_DIR),
+        deployDir = deployDir;
 
   /**
    * Adds a new [Task] to this builder which is run when files match against the
@@ -66,9 +69,10 @@ class Builder {
   Future<BuildResult> build(
       List<String> changedFiles,
       List<String> removedFiles,
-      {bool clean: false}) {
+      { bool clean: false,
+      bool deploy: false}) {
 
-    _logger.info("Starting build");
+    _logger.fine("Starting build deploy: $deploy");
 
     var initTasks = [];
     if (clean) {
@@ -77,19 +81,83 @@ class Builder {
     return Future.wait(initTasks)
       .then((_) => _createDirs())
       .then((_) {
-        _logger.info("Initialization tasks complete");
+        _logger.fine("Initialization tasks complete");
         // get the files to operate on
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
-            : new Future.immediate(changedFiles.where(isValidInputFile).toList());
+            : new Future.immediate(
+                changedFiles.where(isValidInputFile).toList());
       })
       .then((List<String> filteredFiles) {
         _logger.info("Running tasks on ${filteredFiles.length} files");
         // add the prefix '_source' to file patterns with no task prefix
-        var files = filteredFiles.mappedBy((f) =>
+        var files = filteredFiles.map((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
 
-        return _run(files);
+        return _build(files);
+      })
+      .then((result) {
+        if (deploy) {
+          _logger.info("building deploy dir.");
+          return _deploy().then((_) {
+            _logger.info("finished building deploy dir");
+            return result;
+          });
+        } else {
+          return result;
+        }
+      });
+  }
+
+  /**
+   * Copy all files from the output directory to the deploy directory to create
+   * a deployable set of files that can be easily tar'ed or zipped and copied.
+   *
+   * Known Issues:
+   *  * The deploy operation copies all packages, even those included
+   *    transitively by buildtool, this creates a larger deploy directory than
+   *    necessary.
+   *  * Internal symlinks are not handled, they will cause duplication of files.
+   */
+  Future<bool> _deploy() {
+    return _cleanDir(deployDir)
+      .then((_) => _createDir(deployDir))
+      .then((_) {
+        var completer = new Completer();
+
+        var lister = new RecursiveDirectoryLister.fromPath(outDir)
+          ..onFile = (f) {
+            var file = new File(f);
+            var fullPath = file.fullPathSync();
+            var path = new Path(f);
+            var relativePath = path.relativeTo(outDir);
+            var newPath = deployDir.join(relativePath);
+            _logger.info("copying file $f to $newPath");
+            var copy = new File.fromPath(newPath);
+            var bytes = file.readAsBytesSync();
+            copy.writeAsBytesSync(bytes);
+          }
+          ..onDir = (d) {
+            // Directory does not have fullPath()
+            var fullPath = new File(d).fullPathSync();
+            // TODO(justinfagnani): same as above
+            var path = new Path(d);
+            var relativePath = path.relativeTo(outDir);
+            var newPath = deployDir.join(relativePath);
+            _logger.info("copying dir $d to $newPath");
+            // TODO(justinfagnani): skip dev-only package dependcies
+            var copy = new Directory.fromPath(newPath);
+            copy.createSync();
+            return true;
+          }
+          ..onDone = (s) {
+            completer.complete(null);
+          }
+          ..onError = (e) {
+            completer.completeError(e);
+          };
+
+        return completer.future;
       });
   }
 
@@ -100,7 +168,7 @@ class Builder {
    *
    * Returns a [BuildResult] combining the results of all task runs.
    */
-  Future<BuildResult> _run(Iterable<InputFile> files) {
+  Future<BuildResult> _build(Iterable<InputFile> files) {
     // copy files so we can add the output of tasks to it
     var allFiles = new List.from(files);
     var prevOutDir;
@@ -140,7 +208,7 @@ class Builder {
           }
 
           // add the outputs to files so subsequent tasks can process them
-          var newFiles = taskResult.outputs.mappedBy((f) =>
+          var newFiles = taskResult.outputs.map((f) =>
               new InputFile(task.name, f, _taskOutDir(task).toString()));
           allFiles.addAll(newFiles);
           // remember this tasks output dir for symlinking
@@ -326,7 +394,7 @@ class _Rule {
   List<Glob> patterns;
 
   _Rule(this.files, this.task) {
-    patterns = files.mappedBy((f) {
+    patterns = files.map((f) {
       // If the file pattern doesn't contain a task name prefix, add '_source:'
       // to indicate that it matches against the original source tree. Forcing
       // a prefix restricts patterns to match only one task, and prevents

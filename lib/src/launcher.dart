@@ -40,6 +40,7 @@ class Launcher {
   final Path baseDir;
   final bool machine;
   final bool clean;
+  final bool deploy;
   final bool quit;
   final List<String> changed;
   final List<String> removed;
@@ -48,6 +49,7 @@ class Launcher {
     this.baseDir,
     this.machine,
     this.clean,
+    this.deploy,
     this.changed,
     this.removed,
     this.quit,
@@ -78,6 +80,7 @@ class Launcher {
         return client.build(
             machine: machine,
             clean: clean,
+            deploy: deploy,
             changedFiles: changed,
             removedFiles: removed);
       }
