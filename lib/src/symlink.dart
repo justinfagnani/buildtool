@@ -16,11 +16,17 @@ Logger _logger = new Logger('symlink');
 // the relevant parts of runProcess. Note that it uses "cmd" to get the path
 // on Windows.
 /**
- * Creates a new symlink that creates an alias from [target] -> [to].
+ * Creates a new symlink that creates an alias from [targetFile] -> [sourceFile].
  */
-Future createSymlink(String target, String linkPath) {
+Future createSymlink(String sourceFile, String targetFile) {
+//  var targetExists = new File(targetFile).existsSync();
+//  print("createSymlink targetExists: $targetExists");
+//  if (targetExists) {
+//    throw new ArgumentError("target already exists, you're probably creating"
+//        "the wrong symlink");
+//  }
   var command = 'ln';
-  var args = ['-s', target, linkPath];
+  var args = ['-s', sourceFile, targetFile];
 
   if (Platform.operatingSystem == 'windows') {
     // Call mklink on Windows to create an NTFS junction point. Only works on
@@ -29,15 +35,18 @@ Future createSymlink(String target, String linkPath) {
     // link (/d) because the latter requires some privilege shenanigans that
     // I'm not sure how to specify from the command line.
     command = 'cmd';
-    args = ['/c', 'mklink', '/j', linkPath, target];
+    args = ['/c', 'mklink', '/j', targetFile, sourceFile];
   }
 
   return Process.run(command, args).then((result) {
     if (result.exitCode != 0) {
-      var details = 'subprocess stdout:\n${result.stdout}\n'
-                    'subprocess stderr:\n${result.stderr}';
       _logger.severe(
-        'unable to create symlink\n from: $target\n to:$linkPath\n$details');
+          'unable to create symlink\n'
+          '  from: $sourceFile\n'
+          '  to:$targetFile\n'
+          '  subprocess stdout:\n${result.stdout}\n'
+          '  subprocess stderr:\n${result.stderr}');
+      throw new RuntimeError('unable to create symlink');
     }
     return null;
   });

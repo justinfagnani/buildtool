@@ -11,7 +11,7 @@ import 'package:buildtool/src/util/future_group.dart';
 String getFullPath(String path) => new File(path).fullPathSync();
 
 /**
- * A [DirectoryLister] that add the following behaviors:
+ * A [DirectoryLister] that adds the following behaviors:
  *   * Recurses the directory tree when [onDir] returns true.
  *   * After an error, doesn't call [onDir] or [onFile].
  *   * Symlinks are partially handled, they will be passed of [onDir] and
@@ -26,6 +26,7 @@ class RecursiveDirectoryLister implements DirectoryLister {
   final Set<String> visited = new Set<String>();
 
   var _onDir;
+  var _onDirLink;
   var _onFile;
   var _onError;
   var _error = false;
@@ -50,30 +51,47 @@ class RecursiveDirectoryLister implements DirectoryLister {
     _onDir = onDir;
   }
 
+  /** Called when a symlink to a previously visited dir is encountered */
+  void set onDirLink(bool onDirLink(String target, String link)) {
+    _onDirLink = onDirLink;
+  }
+  
   _onDirHelper(Path localPath) => (String dir) {
     if (!_error && _onDir != null) {
-
-      // skip symlink cycles
-      var fullPath = getFullPath(dir);
-      if (visited.contains(fullPath)) {
-        return;
-      }
-      visited.add(fullPath);
 
       // try to determine the local path, not resolved path, of symlinks
       // assumes that the lister doesn't return directory paths ending in '/'
       assert(!dir.endsWith('/'));
       var fixedPath = localPath.append(new Path(dir).filename);
 
-      bool recurse = _onDir(fixedPath.toString());
-      if (recurse) {
-        var completer = new Completer();
-        _futureGroup.add(completer.future);
-        var childLister = new Directory(dir).list()
-          ..onDir = _onDirHelper(fixedPath)
-          ..onFile = _onFileHelper(fixedPath)
-          ..onError = _onError
-          ..onDone = (s) => completer.complete(s);
+      // skip symlink cycles
+      var fullPath = getFullPath(dir);
+//      print(
+//          "onDir:\n"
+//          "  dir:       $dir\n"
+//          "  fixedPath: $fixedPath\n"
+//          "  fullPath:  $fullPath\n");
+      
+      var symlink = fixedPath.toString() != fullPath;
+      
+      if (symlink) {
+//        print("symlink");
+        if (_onDirLink != null) {
+          _onDirLink(fixedPath.toString(), fullPath);
+        }
+      } else {
+//        visited.add(fullPath);
+        
+        bool recurse = _onDir(fixedPath.toString());
+        if (recurse) {
+          var completer = new Completer();
+          _futureGroup.add(completer.future);
+          var childLister = new Directory(dir).list()
+            ..onDir = _onDirHelper(fixedPath)
+            ..onFile = _onFileHelper(fixedPath)
+            ..onError = _onError
+            ..onDone = (s) => completer.complete(s);
+        }
       }
     }
   };

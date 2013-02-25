@@ -14,7 +14,7 @@ Future<String> readStreamAsString(InputStream stream) {
   var sis = new StringInputStream(stream);
   sis
   ..onData = () {
-    sb.add(sis.read());
+    sb.write(sis.read());
   }
   ..onClosed = () {
     completer.complete(sb.toString());

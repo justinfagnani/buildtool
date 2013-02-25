@@ -16,7 +16,7 @@ main() {
     // define an async function, this sums the inputs
     Future<int> sum(int a, int b) => new Future.immediate(a + b);
 
-    reduceAsync(data, 0, expectAsync2(sum, data.length)).then((result) {
+    reduceAsync(data, 0, expectAsync2(sum, count: data.length)).then((result) {
       expect(result, 6);
     });
   });

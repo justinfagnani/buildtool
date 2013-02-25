@@ -11,6 +11,7 @@ import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/symlink.dart';
 import 'package:buildtool/src/util/async.dart';
+import 'package:buildtool/src/util/future_group.dart';
 import 'package:buildtool/src/util/recursive_directory_lister.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
@@ -22,7 +23,7 @@ final RegExp taskNameExp = new RegExp(r'^(\w+):');
 
 /** A runnable build configuration */
 class Builder {
-  final Path sourceDirPath;
+  final Path basePath;
   final Path buildDir;
   final Path genDir;
   final Path outDir;
@@ -31,13 +32,19 @@ class Builder {
   // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
 
-  Builder(Path buildDir, Path genDir, Path deployDir, {Path sourceDirPath})
-      : sourceDirPath = (sourceDirPath == null)
+  Builder(Path buildDir, Path genDir, Path deployDir, {Path basePath})
+      : basePath = (basePath == null)
             ? new Path(new Directory.current().path)
-            : sourceDirPath,
-        buildDir = buildDir,
-        genDir = genDir,
-        outDir = buildDir.append(OUT_DIR),
+            : basePath,
+        buildDir = (buildDir.isAbsolute)
+            ? buildDir
+            : basePath.join(buildDir),
+        genDir = (genDir.isAbsolute)
+            ? genDir
+            : basePath.join(genDir),
+        outDir = ((buildDir.isAbsolute)
+            ? buildDir
+            : basePath.join(buildDir)).append(OUT_DIR),
         deployDir = deployDir;
 
   /**
@@ -72,7 +79,12 @@ class Builder {
       { bool clean: false,
       bool deploy: false}) {
 
-    _logger.fine("Starting build deploy: $deploy");
+    _logger.fine("Starting build\n"
+        "testPath: ${new Path('')}\n"
+        "sourceDirPath: $basePath\n"
+        "buildDir: $buildDir\n"
+        "outDir: $outDir\n"
+        "deploy: $deploy");
 
     var initTasks = [];
     if (clean) {
@@ -86,13 +98,13 @@ class Builder {
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
             : new Future.immediate(
-                changedFiles.where(isValidInputFile).toList());
+                changedFiles.where(_isValidInputFile).toList());
       })
       .then((List<String> filteredFiles) {
         _logger.info("Running tasks on ${filteredFiles.length} files");
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.map((f) =>
-            new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
+            new InputFile(SOURCE_PREFIX, f, basePath.toString()));
 
         return _build(files);
       })
@@ -110,7 +122,7 @@ class Builder {
   }
 
   /**
-   * Copy all files from the output directory to the deploy directory to create
+   * Copy all files from the output directory to the deploy basePathcreate
    * a deployable set of files that can be easily tar'ed or zipped and copied.
    *
    * Known Issues:
@@ -173,7 +185,7 @@ class Builder {
     var allFiles = new List.from(files);
     var prevOutDir;
 
-    // Run an async function on every rule that runs the rule, symlinks it's
+    // Run an async function on every rule that runs the task, symlinks it's
     // output directory and updates the BuildResult. We reduce the list of
     // rules to a BuildResult, but there is only one BuildResult instance which
     // is just mutatted and passed along.
@@ -192,10 +204,6 @@ class Builder {
 
       return _runTask(task, matches)
         .then((result) {
-          _logger.info(
-              "Task complete: ${task.name}\n"
-              "  outputs: ${result.outputs}\n"
-              "  mappings: ${result.mappings}");
           return _symlinkSources(prevOutDir, taskOutDir).then((_) => result);
         })
         .then((TaskResult taskResult) {
@@ -227,14 +235,17 @@ class Builder {
     return _createBuildDir(taskOutDir)
         .then((_) {
           _logger.info("Running ${task.name} on $files");
-          return task.run(files, sourceDirPath, taskOutDir, genDir)
+          return task.run(files, basePath, taskOutDir, genDir)
               .catchError((AsyncError e) {
                 _logger.severe("Error running task ${task.name}: $e");
                 throw e;
               });
         })
         .then((TaskResult result) {
-          _logger.fine("task ${task.name} mappings: ${result.mappings}");
+          _logger.info(
+              "Task complete: ${task.name}\n"
+              "  outputs: ${result.outputs}\n"
+              "  mappings: ${result.mappings}");
           return result;
         });
   }
@@ -247,17 +258,18 @@ class Builder {
    * writes files into it's output directory, it has created a partial
    * copy/transformation of the source tree from the previous task or source
    * dir. This method fills in the rest by walking the input directory tree and
-   * symlinking any file or directory no in [outDir]. If a file exists it's
+   * symlinking any file or directory not in [outDir]. If a file exists it's
    * simply skipped. If a directory exists no symlink is created for it, but
    * it's recursed into. This will create the minimum number of symlinks to
    * recreate the source tree.
    */
   Future _symlinkSources(Path inDir, Path outDir) {
-    inDir = inDir == null ? sourceDirPath : inDir;
+    inDir = inDir == null ? basePath : inDir;
     if (!inDir.isAbsolute) {
       inDir = new Path(new Directory.current().path).join(inDir);
     }
     _logger.fine("symlinking sources from $inDir to $outDir");
+    var futureGroup = new FutureGroup();
     var completer = new Completer();
 
     // walk the inDir tree
@@ -265,11 +277,16 @@ class Builder {
       // when we see a file, symlink that file in the outDir, unless it already
       // exists
       ..onFile = (f) {
+        if (f.endsWith('packages')) {
+          _logger.fine("found packages file: $f");
+        }
+
         if (!f.startsWith(inDir.toString())) {
           return;
         }
-        var relativePath = f.substring(inDir.toString().length + 1);
-        if (isValidInputFile(relativePath)) {
+        var relativePath = new Path(f).relativeTo(inDir).toString();//d.substring(inDir.toString().length + 1);
+//        _logger.fine("file relative path: $relativePath");
+        if (_isValidInputFile(relativePath)) {
           var linkPath = outDir.append(relativePath);
           var file = new File.fromPath(outDir.append(relativePath));
           if (!file.existsSync()) {
@@ -282,15 +299,18 @@ class Builder {
       // When we see a dir, symlink it unless it exists in the output. If it
       // exists in the output, recurse into it.
       ..onDir = (d) {
+        if (d.endsWith('packages')) {
+          _logger.fine("found packages dir: $d");
+        }
         if (!d.startsWith(inDir.toString())) {
           // this must be from a symlink outside the directory
           // we should already be skipping this because we know we symlinked it
           // in a previous pass, but right now we'll skip it here
           return false;
         }
-        var relativePath = d.substring(inDir.toString().length + 1);
-        _logger.fine("relative path: $relativePath");
-        if (!isValidInputFile(relativePath)) {
+        var relativePath = new Path(d).relativeTo(inDir).toString();//d.substring(inDir.toString().length + 1);
+//        _logger.fine("dir relative path: $relativePath");
+        if (!_isValidInputFile(relativePath)) {
           return false;
         }
         var linkPath = outDir.append(relativePath);
@@ -304,8 +324,20 @@ class Builder {
           // unless it's the packages symlink
           return !d.endsWith("packages");
         } else {
+          print("-- creating symlink: $d $linkPath");
           createSymlink(d, linkPath.toString());
           return false;
+        }
+      }
+      ..onDirLink = (target, link) {
+        _logger.fine("dir link: $target $link");
+        // if this is an internal link, the link path will be within basePath
+        if (link.startsWith(basePath.toString())) {
+          createSymlink(target, link);
+//          var linkPath = new Path(link);
+//          var targetPath = new Path(target);
+//          var relativeLink = linkPath.relativeTo(basePath);
+//          var relativeTarget = targetPath.relativeTo(basePath);
         }
       }
       ..onDone = (s) {
@@ -362,12 +394,16 @@ class Builder {
   Future<List<String>> _getAllFiles() {
     var files = <String>[];
     var completer = new Completer<List<String>>();
-    var lister = new RecursiveDirectoryLister.fromPath(sourceDirPath)
+    var lister = new RecursiveDirectoryLister.fromPath(basePath)
       ..onDir = (String dir) {
-        return !dir.endsWith(PACKAGES);
+//        print("getAllFiles dir: $dir ${_isValidInputFile(dir)}");
+        return _isValidInputFile(dir);
+      }
+      ..onDirLink = (link, target) {
+//        print("getAllFiles link: $link $target");
       }
       ..onFile = (file) {
-        var relativePath = new Path(file).relativeTo(sourceDirPath);
+        var relativePath = new Path(file).relativeTo(basePath);
         files.add(relativePath.toString());
       }
       ..onDone = (s) {
@@ -378,6 +414,13 @@ class Builder {
   }
 
   Path _taskOutDir(Task task) => buildDir.append('_${task.name}');
+  
+  bool _isValidInputFile(String f) {
+    var path = new Path(f);
+    if (path.isAbsolute) path = path.relativeTo(basePath);
+    return !(EXCLUDED_DIRS.contains(path.toString()) || 
+        EXCLUDED_FILES.contains(path.toString()));
+  }
 }
 
 class BuildResult {

@@ -54,7 +54,7 @@ main() {
 
     var task = new MockTask('mock');
     var builder = new Builder(buildPath, genPath, deployPath,
-        sourceDirPath: sourcePath);
+        basePath: sourcePath);
     builder.addRule('mock', task, ["*.html"]);
 
     builder.build([file1Path, file2Path], [], clean: false)
@@ -107,7 +107,7 @@ main() {
     var out1Path = task1OutPath.append(file1Path).toString();
     var out2Path = task2OutPath.append(file2Path).toString();
 
-    var builder = new Builder(buildPath, genPath, deployPath, sourceDirPath: sourcePath);
+    var builder = new Builder(buildPath, genPath, deployPath, basePath: sourcePath);
     builder.addRule('task1', task1, ["*.html"]);
     builder.addRule('task2', task2, ["*.txt"]);
 

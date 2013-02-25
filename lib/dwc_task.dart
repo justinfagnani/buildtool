@@ -23,7 +23,7 @@ class DwcTask extends Task {
   Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
       Path genDir) {
     var futures = <Future<dwc.CompilerResult>>[];
-
+    _logger.info("running  dwc baseDir: $baseDir outDir: $outDir");
     for (var file in files) {
       var fileOutDir = outDir.append(file.path).directoryPath;
       var args = ['--out', outDir.toString()];
@@ -36,9 +36,15 @@ class DwcTask extends Task {
       var mappings = new Map<String, String>();
       var outputs = <String>[];
 
+      _logger.info("dwc complete.");
+      
       for (var result in results) {
         for (var output in result.outputs.keys) {
-          var outputPath = output.substring(outDir.toString().length + 1);
+          // map absolute path to relative path
+//          if (!output.startsWith(outDir.toString())) {
+//            throw new ArgumentError('invalid output path: $output');
+//          }
+          var outputPath = new Path(output).relativeTo(outDir).toString();
           outputs.add(outputPath);
           if (result.outputs[output] != null) {
             var sourcePath = result.outputs[output];

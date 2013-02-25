@@ -25,7 +25,7 @@ class Server {
       : _builder = (builder != null)
             ? builder
             : new Builder(new Path(BUILD_DIR), new Path(GEN_DIR),
-                new Path(BUILD_DIR).append(DEPLOY_DIR), sourceDirPath: baseDir);
+                new Path(BUILD_DIR).append(DEPLOY_DIR), basePath: baseDir);
 
   Future<bool> start() {
     return _createLogFile().then((_) {
@@ -39,7 +39,7 @@ class Server {
       server.addRequestHandler((req) => req.path == STATUS_URL, _statusHandler);
 
       server.listenOn(serverSocket);
-      return _writeLockFile(_builder.sourceDirPath, serverSocket.port)
+      return _writeLockFile(_builder.basePath, serverSocket.port)
         .then((int port) {
           stdout.writeString("buildtool server ready\n");
           stdout.writeString("port: ${port}\n");
