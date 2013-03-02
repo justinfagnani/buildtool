@@ -93,43 +93,34 @@ class Launcher {
   Future<int> _getServerPort() {
     var completer = new Completer();
     var lockFile = new File.fromPath(baseDir.append(BUILDLOCK_FILE));
-    lockFile.exists().then((exists) {
-      if (exists) {
-        var sb = new StringBuffer();
-        var sis = new StringInputStream(lockFile.openInputStream());
-        sis
-          ..onData = () {
-            sb.add(sis.read());
-          }
-          ..onClosed = () {
-            try {
-              var port = int.parse(sb.toString());
-              _logger.fine("Server already running onport: $port");
+    if (lockFile.existsSync()) {
+      try {
+        var contents = lockFile.readAsStringSync();
+        var port = int.parse(contents);
+        _logger.fine("Server already running onport: $port");
 
-              // Check that the lockfile was created after build.dart, if not
-              // restart the server.
-              var buildScriptPath = _options.script;
-              var buildScript = new File(buildScriptPath);
-              var buildLastModified = buildScript.lastModifiedSync();
+        // Check that the lockfile was created after build.dart, if not
+        // restart the server.
+        var buildScriptPath = _options.script;
+        var buildScript = new File(buildScriptPath);
+        var buildLastModified = buildScript.lastModifiedSync();
 
-              var lockLastModified = lockFile.lastModifiedSync();
-              if (buildLastModified < lockLastModified) {
-                completer.complete(port);
-              } else {
-                // restart server
-                var client = new Client(port);
-                client.quit().then((_) {
-                  _startServer().then((v) => completer.complete(v));
-                });
-              }
-            } on Error catch (e) {
-              completer.completeError(e);
-            }
-          };
-      } else {
-        _startServer().then((v) => completer.complete(v));
+        var lockLastModified = lockFile.lastModifiedSync();
+        if (buildLastModified.isBefore(lockLastModified)) {
+          completer.complete(port);
+        } else {
+          // restart server
+          var client = new Client(port);
+          client.quit().then((_) {
+            _startServer().then((v) => completer.complete(v));
+          });
+        }
+      } on Error catch (e) {
+        completer.completeError(e);
       }
-    });
+    } else {
+      _startServer().then((v) => completer.complete(v));
+    }
     return completer.future;
   }
 
@@ -144,22 +135,22 @@ class Launcher {
     var vmExecutable = _options.executable;
     _runScript(vmExecutable, [_options.script, '--server']).then((process) {
       _logger.info("Server started");
-      process.onExit = (exitCode) {
-        _logger.info("Server stopped: $exitCode");
-      };
-      var sis = new StringInputStream(process.stdout);
-      sis.onData = () {
-        var line = sis.readLine();
-        _logger.fine("server: $line");
-        if (line.startsWith("port: ")) {
-          var port = int.parse(line.substring("port: ".length));
-          completer.complete(port);
-        } else if (line.startsWith("error")) {
-          process.stdout.onData = null;
-          completer.completeError("error");
-        }
-      };
-    });
+      process.stdout
+        .transform(new StringDecoder())
+        .transform(new LineTransformer())
+        .listen((String line) {
+          _logger.fine("server: $line");
+          if (line.startsWith("port: ")) {
+            var port = int.parse(line.substring("port: ".length));
+            completer.complete(port);
+          } else if (line.startsWith("error")) {
+            completer.completeError("error");
+          }
+        },
+        onDone: () {
+          _logger.info("Server stopped: ${process.exitCode}");
+        });
+      });
     return completer.future;
   }
 }

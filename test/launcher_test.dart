@@ -16,7 +16,13 @@ import 'utils.dart';
 class ClientMock extends Mock implements Client {}
 
 class ProcessMock extends Mock implements Process {
-  final ListInputStream stdout = new ListInputStream();
+  StreamController<List<int>> _stdoutController;
+  Stream<List<int>> stdout;
+
+  ProcessMock() {
+    _stdoutController = new StreamController<List<int>>();
+    Stream<List<int>> stdout = _stdoutController.stream;
+  }
 }
 
 main() {
@@ -57,7 +63,7 @@ main() {
       expect(port, 12345);
     }));
 
-    mockProcess.stdout.write("port: 12345\n".charCodes);
+    mockProcess._stdoutController.add("port: 12345\n".charCodes);
   });
 
   test('lockfile', () {

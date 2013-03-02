@@ -25,14 +25,14 @@ class Client {
   int port;
 
   final HttpClientFactory httpClientFactory;
-  final OutputStream _outputStream;
+  final IOSink _outputSink;
   var _connectionErrorHandler;
 
   Client(
     this.port,
-    { OutputStream outputStream,
+    { IOSink outputSink,
     this.httpClientFactory: _defaultHttpClientFactory})
-      : _outputStream = (outputStream == null) ? stdout : outputStream {
+      : _outputSink = (outputSink == null) ? stdout : outputSink {
 
     if (port == null) {
       throw new ArgumentError("must specifiy a valid TCP port: $port");
@@ -49,7 +49,7 @@ class Client {
     _connectionErrorHandler = handler;
   }
 
-  Future<bool> quit() {
+  FuturoutputSink() {
     _logger.fine("Quit...");
     return _sendCloseCommand();
   }
@@ -77,8 +77,7 @@ class Client {
             },
           }]);
           // write message for the Editor to receive
-          _outputStream.writeString("$message\n");
-          _outputStream.flush();
+          _outputSink.addString("$message\n");
           return true;
         }
       });

@@ -12,6 +12,7 @@ import 'package:buildtool/src/builder.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/util/io.dart';
 import 'package:logging/logging.dart';
+import 'package:route/server.dart';
 
 final Logger _logger = new Logger('server');
 
@@ -30,36 +31,33 @@ class Server {
   Future<bool> start() {
     return _createLogFile().then((_) {
       _logger.info("Starting server");
-      var serverSocket = new ServerSocket("127.0.0.1", 0, 0);
-      _logger.info("listening on localhost:${serverSocket.port}");
-      var server = new HttpServer();
+      return HttpServer.bind("127.0.0.1", 0, 0).then((server) {
+        var router = new Router(server);
+        router.serve(BUILD_URL).listen(_buildHandler);
+        router.serve(CLOSE_URL).listen(_closeHandler);
+        router.serve(STATUS_URL).listen(_statusHandler);
 
-      server.addRequestHandler((req) => req.path == BUILD_URL, _buildHandler);
-      server.addRequestHandler((req) => req.path == CLOSE_URL, _closeHandler);
-      server.addRequestHandler((req) => req.path == STATUS_URL, _statusHandler);
-
-      server.listenOn(serverSocket);
-      return _writeLockFile(_builder.sourceDirPath, serverSocket.port)
-        .then((int port) {
-          stdout.writeString("buildtool server ready\n");
-          stdout.writeString("port: ${port}\n");
-          stdout.flush();
-          if (port != serverSocket.port) {
-            _logger.info("Another server already running on port $port.");
-            server.close();
-            return false;
-          }
-          _configClosure(_builder);
-          return true;
-        });
+        return _writeLockFile(_builder.sourceDirPath, server.port)
+          .then((int port) {
+            stdout.addString("buildtool server ready\n");
+            stdout.addString("port: ${port}\n");
+            if (port != server.port) {
+              _logger.info("Another server already running on port $port.");
+              server.close();
+              return false;
+            }
+            _configClosure(_builder);
+            return true;
+          });
+      });
     });
   }
 
-  void _buildHandler(HttpRequest req, HttpResponse res) {
-    readStreamAsString(req.inputStream)
+  void _buildHandler(HttpRequest req) {
+    req.transform(new StringDecoder()).toList()
       .catchError((e) {
         _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
-        _jsonReply(res, {'status': 'ERROR', 'error': "$e ${e.stackTrace}"});
+        _jsonReply(req, {'status': 'ERROR', 'error': "$e ${e.stackTrace}"});
         return true;
       }).then((str) {
         var data = parse(str);
@@ -78,44 +76,42 @@ class Server {
               'mappings': mappings,
             };
             _logger.fine("data: $data");
-            _jsonReply(res, data);
+            _jsonReply(req, data);
           },
           onError: (e) {
             _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
-            _jsonReply(res, {'status': 'ERROR', 'error': "$e"});
+            _jsonReply(req, {'status': 'ERROR', 'error': "$e"});
             throw e;
           });
       });
   }
 
-  void _closeHandler(HttpRequest req, HttpResponse res) {
+  void _closeHandler(HttpRequest req) {
     _logger.fine("closing server... ");
     Future.wait([_deleteLockFile(), _closeLogFile()])
         .catchError((e) {
-          res.outputStream.onClosed = () {
-            _logger.fine("closed");
-          };
           _logger.severe("error: $e\nstacktrace: ${e.stackTrace}");
-          _jsonReply(res, {'status': 'CLOSED', 'error': "$e"});
+          _jsonReply(req, {'status': 'CLOSED', 'error': "$e"});
           return true;
         }).then((_) {
-          res.outputStream.onClosed = () {
+          req.response.done.then((_) {
             _logger.fine("closed");
-          };
-          _jsonReply(res, {'status': 'CLOSED'});
+          });
+          _jsonReply(req, {'status': 'CLOSED'});
         });
   }
 
-  void _statusHandler(HttpRequest req, HttpResponse res) {
-    _jsonReply(res, {'status': 'OK'});
+  void _statusHandler(HttpRequest req) {
+    _jsonReply(req, {'status': 'OK'});
   }
 
-  void _jsonReply(HttpResponse res, var data) {
+  void _jsonReply(HttpRequest req, var data) {
     var str = stringify(data);
-    res.contentLength = str.length;
-    res.headers.contentType = JSON_TYPE;
-    res.outputStream.writeString(str);
-    res.outputStream.close();
+    req.response
+      ..contentLength = str.length
+      ..headers.contentType = JSON_TYPE
+      ..addString(str)
+      ..close();
   }
 
   /**
@@ -134,96 +130,66 @@ class Server {
    */
   Future<int> _writeLockFile(Path baseDir, int port) {
     var lockFile = new File.fromPath(baseDir.append(BUILDLOCK_FILE));
-    return lockFile.exists().then((exists) {
-      var serverPort = port;
-      if (exists) {
-        return readStreamAsString(lockFile.openInputStream()).then((str) {
-          var otherPort;
-          try {
-            otherPort = int.parse(str);
-          } on Error catch(e) {
-            // if we can't parse a port, create the lockfile
-            return new Future.immediate(true);
-          }
+    var serverPort = port;
+    if (lockFile.existsSync()) {
+      var contents = lockFile.readAsStringSync();
+      return new Future.of(() => int.parse(contents))
+        .then((int otherPort) {
           return _pingServer(otherPort).then((responded) {
-            if (responded) {
-              // make sure we return the other server's port
-              port = otherPort;
-            }
-            // create lockfile if other server didn't respond
-            return !responded;
-          });
+          if (responded) {
+            // make sure we return the other server's port
+            return otherPort;
+          }
+          // create lockfile if other server didn't respond
+          _createLockFile(baseDir, port);
+          return port;
         });
-      } else {
-        // create lockfile if it doesn't exist
-        return new Future.immediate(true);
-      }
-    }).then((create) {
-      if (create) {
-        var completer = new Completer();
-        var os = lockFile.openOutputStream(FileMode.WRITE);
-        os.writeString("$port");
-        os.flush();
-        os.onNoPendingWrites = () => completer.complete(port);
-        return completer.future;
-      } else {
+      }).catchError((e) {
+        _createLockFile(baseDir, port);
         return new Future.immediate(port);
-      }
-    });
+      });
+    } else {
+      _createLockFile(baseDir, port);
+      return new Future.immediate(port);
+    }
+  }
+
+  void _createLockFile(Path baseDir, int port) {
+    new File.fromPath(baseDir.append(BUILDLOCK_FILE))
+        .writeAsStringSync("$port", mode: FileMode.WRITE);
   }
 
   Future _deleteLockFile() {
     return new File(BUILDLOCK_FILE).delete();
   }
 
-  OutputStream _logStream;
+  IOSink _logSink;
 
   Future _createLogFile() {
     return new File(LOG_FILE).create().then((log) {
-      _logStream = log.openOutputStream(FileMode.APPEND);
+      _logSink = log.openWrite(FileMode.APPEND);
       Logger.root.level = Level.FINE;
       Logger.root.on.record.add((LogRecord r) {
         var m = "${r.time} ${r.loggerName} ${r.level} ${r.message}\n";
-        _logStream.writeString(m);
-        stdout.writeString(m);
-        stdout.flush();
+        _logSink.addString(m);
+        stdout.addString(m);
       });
       return true;
     });
   }
 
-  Future _closeLogFile() {
-    if (_logStream != null) {
-      var completer = new Completer();
-      _logStream.close();
-      _logStream.onClosed = () => completer.complete(null);
-      return completer.future;
-    } else {
-      return new Future.immediate(null);
-    }
-  }
+  Future _closeLogFile() =>
+      _logSink == null ? new Future.immediate(null) : (_logSink..close()).done;
 
   /**
    * Pings another buildtool server to see if it's running. Returns [:true:] if
    * the server responds with a status of 'OK'.
    */
-  Future<bool> _pingServer(int port) {
-    var completer = new Completer();
-    var client = new HttpClient();
-    var conn = client.post("localhost", port, STATUS_URL)
-      ..onRequest = (req) {
-        req.outputStream.close();
-      }
-      ..onResponse = (res) {
-        readStreamAsString(res.inputStream).then((str) {
-          var data = parse(str);
-          completer.complete((data is Map) && (data.containsKey('status')
-              && data['status'] == 'OK'));
-        });
-      }
-      ..onError = (e) {
-        completer.complete(false);
-      };
-    return completer.future;
-  }
+  Future<bool> _pingServer(int port) =>
+    new HttpClient().post("localhost", port, STATUS_URL)
+      .then((req) => req.response)
+      .then(byteStreamToString)
+      .then(parse)
+      .then((data) =>
+          data is Map && data.containsKey('status') && data['status'] == 'OK');
 }

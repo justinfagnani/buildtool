@@ -15,9 +15,9 @@ var _logger = new Logger("builder_test");
 
 main() {
 //  Unncomment for verbose output during tests
-//  Logger.root.on.record.add((r) =>
-//      print("${r.loggerName} ${r.level} ${r.message}"));
-//  Logger.root.level = Level.FINE;
+  Logger.root.on.record.add((r) =>
+      print("${r.loggerName} ${r.level} ${r.message}"));
+  Logger.root.level = Level.FINE;
 
   var sourcePath = new Path('test/data');
   var buildPath = sourcePath.append(BUILD_DIR);
@@ -45,7 +45,7 @@ main() {
         throwsA(predicate((e) => e.message.contains('task2'))));
   });
 
-  test('single task', () {
+  solo_test('single task', () {
     var taskOutPath = buildPath.append('_mock');
     var file1Path = 'test.html';
     var file2Path = 'test.txt';

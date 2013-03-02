@@ -11,7 +11,7 @@ import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/symlink.dart';
 import 'package:buildtool/src/util/async.dart';
-import 'package:buildtool/src/util/recursive_directory_lister.dart';
+import 'package:buildtool/src/util/io.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
 
@@ -89,8 +89,9 @@ class Builder {
                 changedFiles.where(isValidInputFile).toList());
       })
       .then((List<String> filteredFiles) {
-        _logger.info("Running tasks on ${filteredFiles.length} files");
+        _logger.info("Running tasks on ${filteredFiles.length} ${filteredFiles}");
         // add the prefix '_source' to file patterns with no task prefix
+
         var files = filteredFiles.map((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
 
@@ -123,41 +124,29 @@ class Builder {
     return _cleanDir(deployDir)
       .then((_) => _createDir(deployDir))
       .then((_) {
-        var completer = new Completer();
-
-        var lister = new RecursiveDirectoryLister.fromPath(outDir)
-          ..onFile = (f) {
-            var file = new File(f);
-            var fullPath = file.fullPathSync();
-            var path = new Path(f);
-            var relativePath = path.relativeTo(outDir);
+        var listing = listDirectory(new Directory.fromPath(outDir),
+            (e) => true);
+        listing.listen((e) {
+          if (e is File) {
+            var relativePath = new Path(e.name);
             var newPath = deployDir.join(relativePath);
-            _logger.info("copying file $f to $newPath");
+            _logger.info("copying file $relativePath to $newPath");
             var copy = new File.fromPath(newPath);
-            var bytes = file.readAsBytesSync();
+            var bytes = e.readAsBytesSync();
             copy.writeAsBytesSync(bytes);
-          }
-          ..onDir = (d) {
-            // Directory does not have fullPath()
-            var fullPath = new File(d).fullPathSync();
-            // TODO(justinfagnani): same as above
-            var path = new Path(d);
-            var relativePath = path.relativeTo(outDir);
+          } else if (e is Directory) {
+            var relativePath = new Path(e.path);
             var newPath = deployDir.join(relativePath);
-            _logger.info("copying dir $d to $newPath");
+            _logger.info("copying dir $relativePath to $newPath");
             // TODO(justinfagnani): skip dev-only package dependcies
             var copy = new Directory.fromPath(newPath);
             copy.createSync();
-            return true;
+          } else if (e is Symlink) {
+            // ?
           }
-          ..onDone = (s) {
-            completer.complete(null);
-          }
-          ..onError = (e) {
-            completer.completeError(e);
-          };
-
-        return completer.future;
+        });
+        // transform stream to future
+        return listing.reduce(true, (_, e) => true);
       });
   }
 
@@ -260,61 +249,102 @@ class Builder {
     _logger.fine("symlinking sources from $inDir to $outDir");
     var completer = new Completer();
 
-    // walk the inDir tree
-    var lister = new RecursiveDirectoryLister.fromPath(inDir)
-      // when we see a file, symlink that file in the outDir, unless it already
-      // exists
-      ..onFile = (f) {
-        if (!f.startsWith(inDir.toString())) {
-          return;
-        }
-        var relativePath = f.substring(inDir.toString().length + 1);
-        if (isValidInputFile(relativePath)) {
-          var linkPath = outDir.append(relativePath);
-          var file = new File.fromPath(outDir.append(relativePath));
+    var listing = listDirectory(new Directory.fromPath(inDir), (e) {
+      var relativePath = new Path(getPath(e)).relativeTo(inDir);
+      return isValidInputFile(relativePath.toString())
+          && e is Directory
+          && !e.path.endsWith("packages");
+    });
+
+    listing.listen((FileSystemEntity e) {
+      print("e: $e");
+      if (e is File) {
+        if (isValidInputFile(e.name)) {
+          var relativePath = new Path(e.name).relativeTo(inDir);
+          var linkPath = outDir.join(relativePath);
+          _logger.info("relativePath: $relativePath linkPath: $linkPath");
+          var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
-            // TODO(justinfagnani): how do we validate the file? could it be a
-            // broken symlink?
-            createSymlink(f, linkPath.toString());
+            new Symlink(e.name, linkPath.toString()).create();
           }
         }
-      }
-      // When we see a dir, symlink it unless it exists in the output. If it
-      // exists in the output, recurse into it.
-      ..onDir = (d) {
-        if (!d.startsWith(inDir.toString())) {
-          // this must be from a symlink outside the directory
-          // we should already be skipping this because we know we symlinked it
-          // in a previous pass, but right now we'll skip it here
+      } else if (e is Directory) {
+        if (!isValidInputFile(e.path)) {
           return false;
         }
-        var relativePath = d.substring(inDir.toString().length + 1);
-        _logger.fine("relative path: $relativePath");
-        if (!isValidInputFile(relativePath)) {
-          return false;
-        }
-        var linkPath = outDir.append(relativePath);
-
+        var relativePath = new Path(e.path).relativeTo(inDir);
+        var linkPath = outDir.join(relativePath);
+        _logger.info("relativePath: $relativePath linkPath: $linkPath");
         var dir = new Directory.fromPath(linkPath);
-        var file = new File.fromPath(linkPath);
 
-        if (dir.existsSync()) {
-          // TODO(justinfagnani): check that dir is not a symlink
-          // recurse so we can symlink files/dirs further down in the tree
-          // unless it's the packages symlink
-          return !d.endsWith("packages");
-        } else {
-          createSymlink(d, linkPath.toString());
-          return false;
+        if (!dir.existsSync()) {
+          new Symlink(e.path, linkPath.toString()).create();
         }
+      } else if (e is Symlink) {
+        // get target and see if it's in inDir, if so create new relative link
+//        if (e.target != null) {
+//          var linkPath = outDir.append(e.link);
+//          new Symlink(e.target, linkPath.toString()).create();
+//        }
       }
-      ..onDone = (s) {
-        completer.complete(null);
-      }
-      ..onError = (e) {
-        completer.completeError(e);
-      };
+    },
+    onDone: () => completer.complete(null));
     return completer.future;
+//    // walk the inDir tree
+//    var lister = new RecursiveDirectoryLister.fromPath(inDir)
+//      // when we see a file, symlink that file in the outDir, unless it already
+//      // exists
+//      ..onFile = (f) {
+//        if (!f.startsWith(inDir.toString())) {
+//          return;
+//        }
+//        var relativePath = f.substring(inDir.toString().length + 1);
+//        if (isValidInputFile(relativePath)) {
+//          var linkPath = outDir.append(relativePath);
+//          var file = new File.fromPath(outDir.append(relativePath));
+//          if (!file.existsSync()) {
+//            // TODO(justinfagnani): how do we validate the file? could it be a
+//            // broken symlink?
+//            createSymlink(f, linkPath.toString());
+//          }
+//        }
+//      }
+//      // When we see a dir, symlink it unless it exists in the output. If it
+//      // exists in the output, recurse into it.
+//      ..onDir = (d) {
+//        if (!d.startsWith(inDir.toString())) {
+//          // this must be from a symlink outside the directory
+//          // we should already be skipping this because we know we symlinked it
+//          // in a previous pass, but right now we'll skip it here
+//          return false;
+//        }
+//        var relativePath = d.substring(inDir.toString().length + 1);
+//        _logger.fine("relative path: $relativePath");
+//        if (!isValidInputFile(relativePath)) {
+//          return false;
+//        }
+//        var linkPath = outDir.append(relativePath);
+//
+//        var dir = new Directory.fromPath(linkPath);
+//        var file = new File.fromPath(linkPath);
+//
+//        if (dir.existsSync()) {
+//          // TODO(justinfagnani): check that dir is not a symlink
+//          // recurse so we can symlink files/dirs further down in the tree
+//          // unless it's the packages symlink
+//          return !d.endsWith("packages");
+//        } else {
+//          createSymlink(d, linkPath.toString());
+//          return false;
+//        }
+//      }
+//      ..onDone = (s) {
+//        completer.complete(null);
+//      }
+//      ..onError = (e) {
+//        completer.completeError(e);
+//      };
+//    return completer.future;
   }
 
   /** Creates the output and gen directories */
@@ -333,7 +363,7 @@ class Builder {
         if (!dirSymlinkExists(linkPath)) {
           removeBrokenDirSymlink(linkPath);
           var targetPath = new File(PACKAGES).fullPathSync();
-          return createSymlink(targetPath, linkPath);
+          return new Symlink(targetPath, linkPath).create();
         } else {
           return new Future.immediate(null);
         }
@@ -360,21 +390,15 @@ class Builder {
   }
 
   Future<List<String>> _getAllFiles() {
-    var files = <String>[];
-    var completer = new Completer<List<String>>();
-    var lister = new RecursiveDirectoryLister.fromPath(sourceDirPath)
-      ..onDir = (String dir) {
-        return !dir.endsWith(PACKAGES);
+    return listDirectory(new Directory.fromPath(sourceDirPath), (dir) {
+      return !dir.path.endsWith(PACKAGES);
+    }).map((FileSystemEntity e) {
+      if (e is Directory) {
+        return e.path;
+      } else if (e is File) {
+        return e.name;
       }
-      ..onFile = (file) {
-        var relativePath = new Path(file).relativeTo(sourceDirPath);
-        files.add(relativePath.toString());
-      }
-      ..onDone = (s) {
-        completer.complete(files);
-      }
-      ..onError = completer.completeError;
-    return completer.future;
+    }).toList();
   }
 
   Path _taskOutDir(Task task) => buildDir.append('_${task.name}');
@@ -408,3 +432,6 @@ class _Rule {
   bool shouldRunOn(String filename) =>
       patterns.any((p) => p.hasMatch(filename));
 }
+
+//Path _relativePath(Path path, Path base) =>
+//    path.isAbsolute ? path : path.relativeTo(base);

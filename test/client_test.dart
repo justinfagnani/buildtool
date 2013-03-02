@@ -4,6 +4,7 @@
 
 library client_test;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:json';
 import 'dart:utf';
@@ -15,6 +16,16 @@ import 'package:http/testing.dart' as http;
 import 'package:unittest/mock.dart';
 import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
+
+
+class MockConsumer<S, T> implements StreamConsumer<S, T> {
+  List<S> data = <S>[];
+  Future<T> consume(Stream<S> stream) {
+    var completer = new Completer();
+    stream.listen(data.add, onDone: () => completer.complete(null));
+    return completer.future;
+  }
+}
 
 main() {
   test('BuildClient.build', () {
@@ -35,17 +46,19 @@ main() {
       }
     });
     var port = 12345;
-    var clientOut = new ListOutputStream();
+    var consumer = new MockConsumer();
+    var clientOut = new IOSink(consumer);
 
     var client = new Client(port,
-        outputStream: clientOut,
+        outputSink: clientOut,
         httpClientFactory: () => httpClientMock);
 
     client.build(
         clean: true,
         changedFiles: ['a'],
         removedFiles: ['b']).then(expectAsync1((_) {
-      List response = parse(decodeUtf8(clientOut.read()));
+      List response =
+          parse(decodeUtf8(consumer.data.expand((e) => e).toList()));
       expect(response.length, 1);
       expect(response, contains(equals(
           {'method': 'mapping', 'params': {'from': 'a', 'to': 'b'}})));
