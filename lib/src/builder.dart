@@ -22,23 +22,25 @@ final RegExp taskNameExp = new RegExp(r'^(\w+):');
 
 /** A runnable build configuration */
 class Builder {
-  final Path sourceDirPath;
-  final Path buildDir;
-  final Path genDir;
-  final Path outDir;
-  final Path deployDir;
+  final Path basePath;
+  Path buildDir;
+  Path genDir;
+  Path outDir;
+  Path deployDir;
 
   // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
 
-  Builder(Path buildDir, Path genDir, Path deployDir, {Path sourceDirPath})
-      : sourceDirPath = (sourceDirPath == null)
+  Builder(Path buildDir, Path genDir, Path deployDir, {Path basePath})
+      : basePath = (basePath == null)
             ? new Path(new Directory.current().path)
-            : sourceDirPath,
-        buildDir = buildDir,
-        genDir = genDir,
-        outDir = buildDir.append(OUT_DIR),
-        deployDir = deployDir;
+            : basePath {
+              
+    this.buildDir = (buildDir.isAbsolute) ? buildDir : basePath.join(buildDir);
+    this.genDir = (genDir.isAbsolute) ? genDir : basePath.join(genDir);
+    this.outDir = buildDir.append(OUT_DIR);
+    this.deployDir = (deployDir.isAbsolute) ? deployDir : basePath.join(deployDir);
+  }
 
   /**
    * Adds a new [Task] to this builder which is run when files match against the
@@ -92,7 +94,7 @@ class Builder {
         _logger.info("Running tasks on ${filteredFiles.length} files\n$filteredFiles");
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.map((f) =>
-            new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
+            new InputFile(SOURCE_PREFIX, f, basePath.toString()));
 
         return _build(files);
       })
@@ -216,7 +218,7 @@ class Builder {
     return _createBuildDir(taskOutDir)
         .then((_) {
           _logger.info("Running ${task.name} on $files");
-          return task.run(files, sourceDirPath, taskOutDir, genDir)
+          return task.run(files, basePath, taskOutDir, genDir)
               .catchError((AsyncError e) {
                 _logger.severe("Error running task ${task.name}: $e");
                 throw e;
@@ -242,7 +244,7 @@ class Builder {
    * recreate the source tree.
    */
   Future _symlinkSources(Path inDir, Path outDir) {
-    inDir = inDir == null ? sourceDirPath : inDir;
+    inDir = inDir == null ? basePath : inDir;
     if (!inDir.isAbsolute) {
       inDir = new Path(new Directory.current().path).join(inDir);
     }
@@ -389,12 +391,12 @@ class Builder {
   }
 
   Future<Iterable<String>> _getAllFiles() {
-    return listDirectory(new Directory.fromPath(sourceDirPath), (dir) {
-      var relativePath = new Path(dir.path).relativeTo(sourceDirPath);
+    return listDirectory(new Directory.fromPath(basePath), (dir) {
+      var relativePath = new Path(dir.path).relativeTo(basePath);
       return isValidInputFile(relativePath.toString()) 
           && !dir.path.endsWith(PACKAGES);
     }).map((FileSystemEntity e) {
-      return _toString(new Path(getPath(e)).relativeTo(sourceDirPath));
+      return _toString(new Path(getPath(e)).relativeTo(basePath));
 //      if (e is Directory) {
 //        return e.path;
 //      } else if (e is File) {
