@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:buildtool/src/client.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/launcher.dart';
+import 'package:logging/logging.dart';
 import 'package:unittest/mock.dart';
 import 'package:unittest/unittest.dart';
 import 'utils.dart';
@@ -21,11 +22,14 @@ class ProcessMock extends Mock implements Process {
 
   ProcessMock() {
     _stdoutController = new StreamController<List<int>>();
-    Stream<List<int>> stdout = _stdoutController.stream;
+    stdout = _stdoutController.stream;
   }
 }
 
 main() {
+  Logger.root.on.record.add((r) =>
+      print("${r.loggerName} ${r.level} ${r.message}"));
+  Logger.root.level = Level.FINE;
 
   setUp(() {
     // verify that test data is present

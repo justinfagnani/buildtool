@@ -45,7 +45,7 @@ main() {
         throwsA(predicate((e) => e.message.contains('task2'))));
   });
 
-  solo_test('single task', () {
+  test('single task', () {
     var taskOutPath = buildPath.append('_mock');
     var file1Path = 'test.html';
     var file2Path = 'test.txt';
@@ -107,7 +107,8 @@ main() {
     var out1Path = task1OutPath.append(file1Path).toString();
     var out2Path = task2OutPath.append(file2Path).toString();
 
-    var builder = new Builder(buildPath, genPath, deployPath, sourceDirPath: sourcePath);
+    var builder = new Builder(buildPath, genPath, deployPath,
+        sourceDirPath: sourcePath);
     builder.addRule('task1', task1, ["*.html"]);
     builder.addRule('task2', task2, ["*.txt"]);
 
@@ -146,7 +147,8 @@ main() {
         .createSync(recursive: true);
     new Directory.fromPath(genPath.append('trash'))
         .createSync(recursive: true);
-    var builder = new Builder(buildPath, genPath, deployPath);
+    var builder = new Builder(buildPath, genPath, deployPath,
+        sourceDirPath: sourcePath);
     builder.build(['a.html'], [], clean: true).then(expectAsync1((result) {
       expect(false,
           new Directory.fromPath(buildPath.append('trash')).existsSync());

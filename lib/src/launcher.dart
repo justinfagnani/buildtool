@@ -134,7 +134,7 @@ class Launcher {
     _logger.info("build script: ${_options.script}");
     var vmExecutable = _options.executable;
     _runScript(vmExecutable, [_options.script, '--server']).then((process) {
-      _logger.info("Server started");
+      _logger.info("Server started: ${process.stdout}");
       process.stdout
         .transform(new StringDecoder())
         .transform(new LineTransformer())

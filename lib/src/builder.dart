@@ -86,12 +86,11 @@ class Builder {
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
             : new Future.immediate(
-                changedFiles.where(isValidInputFile).toList());
+                changedFiles.where(isValidInputFile));
       })
-      .then((List<String> filteredFiles) {
-        _logger.info("Running tasks on ${filteredFiles.length} ${filteredFiles}");
+      .then((Iterable<String> filteredFiles) {
+        _logger.info("Running tasks on ${filteredFiles.length} files.");
         // add the prefix '_source' to file patterns with no task prefix
-
         var files = filteredFiles.map((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
 
@@ -257,24 +256,23 @@ class Builder {
     });
 
     listing.listen((FileSystemEntity e) {
-      print("e: $e");
       if (e is File) {
         if (isValidInputFile(e.name)) {
           var relativePath = new Path(e.name).relativeTo(inDir);
           var linkPath = outDir.join(relativePath);
-          _logger.info("relativePath: $relativePath linkPath: $linkPath");
           var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
             new Symlink(e.name, linkPath.toString()).create();
           }
         }
       } else if (e is Directory) {
-        if (!isValidInputFile(e.path)) {
+        var relativePath = new Path(e.path).relativeTo(inDir);
+        // directories we don't recurse into still show up here
+        // so skip them
+        if (!isValidInputFile(relativePath.toString())) {
           return false;
         }
-        var relativePath = new Path(e.path).relativeTo(inDir);
         var linkPath = outDir.join(relativePath);
-        _logger.info("relativePath: $relativePath linkPath: $linkPath");
         var dir = new Directory.fromPath(linkPath);
 
         if (!dir.existsSync()) {
@@ -389,16 +387,19 @@ class Builder {
             : new Future.immediate(false));
   }
 
-  Future<List<String>> _getAllFiles() {
+  Future<Iterable<String>> _getAllFiles() {
     return listDirectory(new Directory.fromPath(sourceDirPath), (dir) {
-      return !dir.path.endsWith(PACKAGES);
+      var relativePath = new Path(dir.path).relativeTo(sourceDirPath);
+      return isValidInputFile(relativePath.toString()) && !dir.path.endsWith(PACKAGES);
     }).map((FileSystemEntity e) {
       if (e is Directory) {
         return e.path;
       } else if (e is File) {
         return e.name;
+      } else if (e is Symlink) {
+        return null; // to be filtered
       }
-    }).toList();
+    }).where((f) => f != null).toList();
   }
 
   Path _taskOutDir(Task task) => buildDir.append('_${task.name}');

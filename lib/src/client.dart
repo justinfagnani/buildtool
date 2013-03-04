@@ -49,7 +49,7 @@ class Client {
     _connectionErrorHandler = handler;
   }
 
-  FuturoutputSink() {
+  Future quit() {
     _logger.fine("Quit...");
     return _sendCloseCommand();
   }

@@ -91,13 +91,12 @@ main() {
       }));
     });
 
-    solo_test('symlink cycle', () {
+    test('symlink cycle', () {
       var dir = new Directory.fromPath(testPath.append('dir'))..createSync();
       new Symlink('../dir', testPath.append('dir/link').toString()).create()
         .then(expectAsync1((_) {
           var listing = listDirectory(dir, (_) => true);
           listing.toList().then(expectAsync1((list) {
-            print(list);
             expect(list.length, 1);
             expect(list.first.target, getFullPath(dir.path));
           }));
