@@ -15,13 +15,22 @@ library glob;
  *   * '**' matches one or more characters including '/'
  */
 class Glob implements Pattern {
-  final regex;
+  final RegExp regex;
+  final String pattern;
   
-  Glob(String pattern) : regex = _regexpFromGlobPattern(pattern);
+  Glob(String pattern)
+      : pattern = pattern, 
+        regex = _regexpFromGlobPattern(pattern);
   
   Iterable<Match> allMatches(String str) => regex.allMatches(str);
   
   bool hasMatch(String str) => regex.hasMatch(str);
+  
+  String toString() => pattern;
+  
+  int get hashcode => pattern.hashCode;
+  
+  bool operator==(other) => other is Glob && pattern == other.pattern;
 }
 
 // From the PatternCharacter rule here:
@@ -30,25 +39,25 @@ final _specialChars = new RegExp(r'[\\\^\$\.\|\+\[\]\(\)\{\}]');
 
 RegExp _regexpFromGlobPattern(String pattern) {
   var sb = new StringBuffer();
-  sb.add('^');
-  var chars = pattern.splitChars();
+  sb.write('^');
+  var chars = pattern.split('');
   for (var i = 0; i < chars.length; i++) {
     var c = chars[i];
     if (_specialChars.hasMatch(c)) {
-      sb.add('\\$c');
+      sb.write('\\$c');
     } else if (c == '*') {
       if ((i + 1 < chars.length) && (chars[i + 1] == '*')) {
-        sb.add('.*');
+        sb.write('.*');
         i++;
       } else {
-        sb.add('[^/]*');
+        sb.write('[^/]*');
       }
     } else if (c == '?') {
-      sb.add('[^/]');
+      sb.write('[^/]');
     } else {
-      sb.add(c);
+      sb.write(c);
     }
   }
-  sb.add(r'$');
+  sb.write(r'$');
   return new RegExp(sb.toString());
 }

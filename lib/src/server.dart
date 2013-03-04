@@ -60,7 +60,7 @@ class Server {
         _jsonReply(req, {'status': 'ERROR', 'error': "$e ${e.stackTrace}"});
         return true;
       }).then((str) {
-        var data = parse(str);
+        var data = parse(str.join(''));
         _logger.info("build command received data: $data");
 
         _builder.build(data['changed'], data['removed'], clean: data['clean'],

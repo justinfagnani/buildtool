@@ -89,7 +89,7 @@ class Builder {
                 changedFiles.where(isValidInputFile));
       })
       .then((Iterable<String> filteredFiles) {
-        _logger.info("Running tasks on ${filteredFiles.length} files.");
+        _logger.info("Running tasks on ${filteredFiles.length} files\n$filteredFiles");
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.map((f) =>
             new InputFile(SOURCE_PREFIX, f, sourceDirPath.toString()));
@@ -172,6 +172,7 @@ class Builder {
           rule.shouldRunOn(f.matchString)).toList();
       if (matches.isEmpty) {
         // don't run the current task if we have no files to operate on
+        _logger.info("Rule $rule matches no files.");
         return new Future.immediate(buildResult);
       }
 
@@ -390,20 +391,24 @@ class Builder {
   Future<Iterable<String>> _getAllFiles() {
     return listDirectory(new Directory.fromPath(sourceDirPath), (dir) {
       var relativePath = new Path(dir.path).relativeTo(sourceDirPath);
-      return isValidInputFile(relativePath.toString()) && !dir.path.endsWith(PACKAGES);
+      return isValidInputFile(relativePath.toString()) 
+          && !dir.path.endsWith(PACKAGES);
     }).map((FileSystemEntity e) {
-      if (e is Directory) {
-        return e.path;
-      } else if (e is File) {
-        return e.name;
-      } else if (e is Symlink) {
-        return null; // to be filtered
-      }
+      return _toString(new Path(getPath(e)).relativeTo(sourceDirPath));
+//      if (e is Directory) {
+//        return e.path;
+//      } else if (e is File) {
+//        return e.name;
+//      } else if (e is Symlink) {
+//        return null; // to be filtered
+//      }
     }).where((f) => f != null).toList();
   }
 
   Path _taskOutDir(Task task) => buildDir.append('_${task.name}');
 }
+
+String _toString(o) => (o == null) ? null : o.toString();
 
 class BuildResult {
   final List<String> messages;
@@ -432,6 +437,8 @@ class _Rule {
 
   bool shouldRunOn(String filename) =>
       patterns.any((p) => p.hasMatch(filename));
+  
+  String toString() => "${task.name} $patterns";
 }
 
 //Path _relativePath(Path path, Path base) =>
