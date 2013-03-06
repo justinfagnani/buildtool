@@ -3,8 +3,6 @@ library list_directory_test;
 import 'dart:async';
 import 'dart:io';
 import 'package:buildtool/src/util/io.dart';
-import 'package:buildtool/src/util/recursive_directory_lister.dart';
-import 'package:buildtool/src/symlink.dart';
 import 'package:unittest/unittest.dart';
 
 main() {

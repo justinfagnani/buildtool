@@ -9,7 +9,6 @@ import 'dart:collection';
 import 'dart:io';
 import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
-import 'package:buildtool/src/symlink.dart';
 import 'package:buildtool/src/util/async.dart';
 import 'package:buildtool/src/util/io.dart';
 import 'package:buildtool/task.dart';

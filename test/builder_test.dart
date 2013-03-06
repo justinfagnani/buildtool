@@ -26,8 +26,8 @@ main() {
   var genPath =  new Path('gen');
 
   tearDown(() {
-    _deleteDir(buildPath);
-    _deleteDir(genPath);
+    _deleteDir(sourcePath.join(buildPath));
+    _deleteDir(sourcePath.join(genPath));
   });
 
   test('addRule duplicate names', () {
