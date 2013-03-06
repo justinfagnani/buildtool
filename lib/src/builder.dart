@@ -31,15 +31,22 @@ class Builder {
   // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
 
+  /**
+   * Create a new Builder instance.
+   * 
+   * [buildDir], [genDir] and [deployDir] are relative to [basePath], unless
+   * they are absolute. [basePath] defaults to the current working directory if
+   * not specified.
+   */
   Builder(Path buildDir, Path genDir, Path deployDir, {Path basePath})
       : basePath = (basePath == null)
             ? new Path(new Directory.current().path)
             : basePath {
               
-    this.buildDir = (buildDir.isAbsolute) ? buildDir : basePath.join(buildDir);
-    this.genDir = (genDir.isAbsolute) ? genDir : basePath.join(genDir);
-    this.outDir = buildDir.append(OUT_DIR);
-    this.deployDir = (deployDir.isAbsolute) ? deployDir : basePath.join(deployDir);
+    this.buildDir = (buildDir.isAbsolute) ? buildDir : this.basePath.join(buildDir);
+    this.genDir = (genDir.isAbsolute) ? genDir : this.basePath.join(genDir);
+    this.outDir = this.buildDir.append(OUT_DIR);
+    this.deployDir = (deployDir.isAbsolute) ? deployDir : this.buildDir.join(deployDir);
   }
 
   /**
@@ -129,7 +136,7 @@ class Builder {
             (e) => true);
         listing.listen((e) {
           if (e is File) {
-            var relativePath = new Path(e.name);
+            var relativePath = new Path(e.path);
             var newPath = deployDir.join(relativePath);
             _logger.info("copying file $relativePath to $newPath");
             var copy = new File.fromPath(newPath);
@@ -252,7 +259,7 @@ class Builder {
     var completer = new Completer();
 
     var listing = listDirectory(new Directory.fromPath(inDir), (e) {
-      var relativePath = new Path(getPath(e)).relativeTo(inDir);
+      var relativePath = new Path(e.path).relativeTo(inDir);
       return isValidInputFile(relativePath.toString())
           && e is Directory
           && !e.path.endsWith("packages");
@@ -260,12 +267,12 @@ class Builder {
 
     listing.listen((FileSystemEntity e) {
       if (e is File) {
-        if (isValidInputFile(e.name)) {
-          var relativePath = new Path(e.name).relativeTo(inDir);
+        if (isValidInputFile(e.path)) {
+          var relativePath = new Path(e.path).relativeTo(inDir);
           var linkPath = outDir.join(relativePath);
           var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
-            new Symlink(e.name, linkPath.toString()).create();
+            new Symlink(e.path, linkPath.toString()).create();
           }
         }
       } else if (e is Directory) {
@@ -282,70 +289,10 @@ class Builder {
           new Symlink(e.path, linkPath.toString()).create();
         }
       } else if (e is Symlink) {
-        // get target and see if it's in inDir, if so create new relative link
-//        if (e.target != null) {
-//          var linkPath = outDir.append(e.link);
-//          new Symlink(e.target, linkPath.toString()).create();
-//        }
       }
     },
     onDone: () => completer.complete(null));
     return completer.future;
-//    // walk the inDir tree
-//    var lister = new RecursiveDirectoryLister.fromPath(inDir)
-//      // when we see a file, symlink that file in the outDir, unless it already
-//      // exists
-//      ..onFile = (f) {
-//        if (!f.startsWith(inDir.toString())) {
-//          return;
-//        }
-//        var relativePath = f.substring(inDir.toString().length + 1);
-//        if (isValidInputFile(relativePath)) {
-//          var linkPath = outDir.append(relativePath);
-//          var file = new File.fromPath(outDir.append(relativePath));
-//          if (!file.existsSync()) {
-//            // TODO(justinfagnani): how do we validate the file? could it be a
-//            // broken symlink?
-//            createSymlink(f, linkPath.toString());
-//          }
-//        }
-//      }
-//      // When we see a dir, symlink it unless it exists in the output. If it
-//      // exists in the output, recurse into it.
-//      ..onDir = (d) {
-//        if (!d.startsWith(inDir.toString())) {
-//          // this must be from a symlink outside the directory
-//          // we should already be skipping this because we know we symlinked it
-//          // in a previous pass, but right now we'll skip it here
-//          return false;
-//        }
-//        var relativePath = d.substring(inDir.toString().length + 1);
-//        _logger.fine("relative path: $relativePath");
-//        if (!isValidInputFile(relativePath)) {
-//          return false;
-//        }
-//        var linkPath = outDir.append(relativePath);
-//
-//        var dir = new Directory.fromPath(linkPath);
-//        var file = new File.fromPath(linkPath);
-//
-//        if (dir.existsSync()) {
-//          // TODO(justinfagnani): check that dir is not a symlink
-//          // recurse so we can symlink files/dirs further down in the tree
-//          // unless it's the packages symlink
-//          return !d.endsWith("packages");
-//        } else {
-//          createSymlink(d, linkPath.toString());
-//          return false;
-//        }
-//      }
-//      ..onDone = (s) {
-//        completer.complete(null);
-//      }
-//      ..onError = (e) {
-//        completer.completeError(e);
-//      };
-//    return completer.future;
   }
 
   /** Creates the output and gen directories */
@@ -396,14 +343,7 @@ class Builder {
       return isValidInputFile(relativePath.toString()) 
           && !dir.path.endsWith(PACKAGES);
     }).map((FileSystemEntity e) {
-      return _toString(new Path(getPath(e)).relativeTo(basePath));
-//      if (e is Directory) {
-//        return e.path;
-//      } else if (e is File) {
-//        return e.name;
-//      } else if (e is Symlink) {
-//        return null; // to be filtered
-//      }
+      return _toString(new Path(e.path).relativeTo(basePath));
     }).where((f) => f != null).toList();
   }
 
@@ -442,6 +382,3 @@ class _Rule {
   
   String toString() => "${task.name} $patterns";
 }
-
-//Path _relativePath(Path path, Path base) =>
-//    path.isAbsolute ? path : path.relativeTo(base);

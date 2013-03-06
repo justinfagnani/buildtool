@@ -27,7 +27,7 @@ class ProcessMock extends Mock implements Process {
 }
 
 main() {
-  Logger.root.on.record.add((r) =>
+  Logger.root.onRecord.listen((r) =>
       print("${r.loggerName} ${r.level} ${r.message}"));
   Logger.root.level = Level.FINE;
 
@@ -67,7 +67,7 @@ main() {
       expect(port, 12345);
     }));
 
-    mockProcess._stdoutController.add("port: 12345\n".charCodes);
+    mockProcess._stdoutController.add("port: 12345\n".codeUnits);
   });
 
   test('lockfile', () {

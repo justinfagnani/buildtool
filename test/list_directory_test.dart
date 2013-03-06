@@ -47,7 +47,7 @@ main() {
 
         listDirectory(testDir, (_) => true).listen((FileSystemEntity e) {
           if (e is File) {
-            results.add("file: ${e.name} : ${e.fullPathSync()}");
+            results.add("file: ${e.path} : ${e.fullPathSync()}");
           } else if (e is Directory) {
             var f = new File(e.path);
             results.add("dir: ${e.path} : ${f.fullPathSync()}");
@@ -81,9 +81,9 @@ main() {
       new Directory.fromPath(testPath.append('dir2')).createSync();
       new File.fromPath(testPath.append('dir2/file')).createSync();
 
-      listDirectory(testDir, (e) => !getPath(e).endsWith('dir2')).toList()
+      listDirectory(testDir, (e) => !e.path.endsWith('dir2')).toList()
       .then(expectAsync1((results) {
-        expect(results.map((e) => getPath(e)), unorderedEquals([
+        expect(results.map((e) => e.path), unorderedEquals([
             "$testPath/dir",
             "$testPath/dir/file",
             "$testPath/dir2",

@@ -31,9 +31,8 @@ Stream<FileSystemEntity> listDirectory(Directory dir,
     StreamSubscription sub;
     sub = stream.listen(
         (FileSystemEntity e) {
-          var path;
+          var path = new Path(e.path);
           if (e is Directory) {
-            path = new Path(e.path);
             var expectedFullPath = fullParentPath.append(path.filename).toString();
             var fullPath = new Path(new File.fromPath(path).fullPathSync());
 
@@ -48,7 +47,6 @@ Stream<FileSystemEntity> listDirectory(Directory dir,
               _list(e, fullPath);
             }
           } else if (e is File) {
-            path = new Path(e.name);
             var expectedFullPath = fullParentPath.append(path.filename).toString();
             var fullPath = e.fullPathSync();
 
@@ -90,6 +88,8 @@ class Symlink extends FileSystemEntity {
 
   Symlink(this.target, this.link, {this.isDirectory});
 
+  String get path => link;
+  
   // TODO(justinfagnani): this code was taken from dwc, from Pub's io library.
   // Added error handling and don't return the file result, to match the code
   // we had previously. Also "from" and "to" only accept paths. And inlined

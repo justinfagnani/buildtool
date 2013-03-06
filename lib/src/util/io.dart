@@ -9,39 +9,11 @@ import 'dart:io';
 import 'dart:uri';
 import 'package:buildtool/src/symlink.dart';
 
-//Future<String> readStreamAsString(InputStream stream) {
-//  var completer = new Completer();
-//  var sb = new StringBuffer();
-//  var sis = new StringInputStream(stream);
-//  sis
-//  ..onData = () {
-//    sb.add(sis.read());
-//  }
-//  ..onClosed = () {
-//    completer.complete(sb.toString());
-//  }
-//  ..onError = completer.completeError;
-//  return completer.future;
-//}
-
-Future<String> readFileAsString(String filename) =>
-    new File(filename).readAsString();
-
 String uriToNativePath(Uri uri) {
   if (uri.scheme != 'file') {
     throw new ArgumentError(uri);
   }
   return new Path(uri.path).toNativePath();
-}
-
-String getPath(FileSystemEntity e) {
-  if (e is Directory) {
-    return e.path;
-  } else if (e is File) {
-    return e.name;
-  } else if (e is Symlink) {
-    return e.link;
-  }
 }
 
 Future<String> byteStreamToString(Stream<List<int>> stream) =>
