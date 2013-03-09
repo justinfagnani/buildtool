@@ -23,6 +23,12 @@ class DwcTask extends Task {
   Future<TaskResult> run(List<InputFile> files, Path baseDir, Path outDir,
       Path genDir) {
     var futures = <Future<dwc.CompilerResult>>[];
+    
+    var mappings = <String, String>{};
+    var outputs = <String>[];
+    var dependencies = <String, List<String>>{};
+    var messages = <String>[];
+    var success = true;
 
     for (var file in files) {
       var fileOutDir = outDir.append(file.path).directoryPath;
@@ -32,13 +38,9 @@ class DwcTask extends Task {
       print("outDir: $outDir");
       args.addAll(['--basedir', baseDir.toString()]);
       args.add(file.inputPath.toNativePath());
-      futures.add(dwc.run(args));
-    }
-    return Future.wait(futures).then((List<dwc.CompilerResult> results) {
-      var mappings = new Map<String, String>();
-      var outputs = <String>[];
 
-      for (var result in results) {
+      futures.add(dwc.run(args).then((dwc.CompilerResult result) {
+        success = success || result.success;        
         for (var output in result.outputs.keys) {
           var outputPath = output.substring(outDir.toString().length + 1);
           outputs.add(outputPath);
@@ -47,13 +49,21 @@ class DwcTask extends Task {
             mappings[sourcePath] = outputPath;
           }
         }
-      }
-      return new TaskResult(
-          results.every((r) => r.success),
+        
+        dependencies.putIfAbsent(file.path, () => []);
+        for (var input in result.inputs) {
+          dependencies[file.path].add(input);
+        }
+        messages.addAll(result.messages);
+      }));
+    }
+    return Future.wait(futures).then((_) =>
+        new TaskResult(
+          success,
           outputs,
           mappings,
-          _flatMap(results, (result) => result.messages));
-    });
+          dependencies,
+          messages));
   }
 }
 

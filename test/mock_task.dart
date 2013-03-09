@@ -53,6 +53,6 @@ class MockTask extends Task {
     }
     _logger.info("MockTask.run finished");
     return new Future.immediate(
-        new TaskResult(true, outFiles, mappings, ['message']));
+        new TaskResult(true, outFiles, mappings, {}, ['message']));
   }
 }

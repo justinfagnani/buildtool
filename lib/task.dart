@@ -71,10 +71,14 @@ class TaskResult {
 
   /** Mapping of inputs to outputs. */
   final Map<String, String> mappings;
+  
+  /** Mapping of inputs to their dependencies */
+  final Map<String, List<String>> dependencies;
+  
   final List<String> messages;
 
-  TaskResult(this.succeeded, this.outputs, this.mappings, this.messages);
+  TaskResult(this.succeeded, this.outputs, this.mappings, this.dependencies, this.messages);
 
-  String toString() => "#<TaskResult succeeded: $succeeded outs: $outputs> "
-      "mappings: $mappings";
+  String toString() => "#<TaskResult succeeded: $succeeded outs: $outputs "
+      "mappings: $mappings>";
 }

@@ -10,4 +10,7 @@ dependencies:
   route: any
   unittest: any
   #TODO: make dwc depend on buildtool
-  web_ui: any
+  web_ui:
+    git: git://github.com/dart-lang/web-ui.git
+
+ 

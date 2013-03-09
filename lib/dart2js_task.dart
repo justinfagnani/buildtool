@@ -59,7 +59,7 @@ class Dart2JSTask extends Task {
         messages.add(r.stdout);
         messages.add(r.stderr);
       }
-      return new TaskResult(success, [], {}, messages);
+      return new TaskResult(success, [], {}, {}, messages);
     });
   }
 }

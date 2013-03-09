@@ -29,7 +29,28 @@ class Builder {
 
   // Use LinkedHashMap to preserve rule order for processing.
   final Map<String, _Rule> _rules = new LinkedHashMap<String, _Rule>();
+  
+  bool firstBuild = true;
+  
+  // Map path -> paths that depend on it
+  final Map<String, List<String>> _deps = <String, List<String>>{};
 
+  Iterable<String> _getDependentFiles(Iterable<String> paths) {
+    var allDeps = new Set();
+    var newDeps = new Set.from(paths);
+    while (!newDeps.isEmpty) {
+      var path = newDeps.first;
+      newDeps.remove(path);
+      for (var dep in _deps[path]) {
+        if (!allDeps.contains(dep)) {
+          allDeps.add(dep);
+          newDeps.add(dep);
+        }
+      }
+    }
+    return allDeps;
+  }
+  
   /**
    * Create a new Builder instance.
    * 
@@ -42,10 +63,12 @@ class Builder {
             ? new Path(new Directory.current().path)
             : basePath {
               
-    this.buildDir = (buildDir.isAbsolute) ? buildDir : this.basePath.join(buildDir);
+    this.buildDir = 
+        (buildDir.isAbsolute) ? buildDir : this.basePath.join(buildDir);
     this.genDir = (genDir.isAbsolute) ? genDir : this.basePath.join(genDir);
     this.outDir = this.buildDir.append(OUT_DIR);
-    this.deployDir = (deployDir.isAbsolute) ? deployDir : this.buildDir.join(deployDir);
+    this.deployDir = 
+        (deployDir.isAbsolute) ? deployDir : this.buildDir.join(deployDir);
   }
 
   /**
@@ -90,11 +113,18 @@ class Builder {
       .then((_) => _createDirs())
       .then((_) {
         _logger.fine("Initialization tasks complete");
+        if (!changedFiles.isEmpty) {
+          print(
+              "changedFiles: $changedFiles\n"
+              "dependentFiles: ${_getDependentFiles(changedFiles)}"
+              );
+        }
         // get the files to operate on
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
             : new Future.immediate(
                 changedFiles.where(isValidInputFile));
+//                _getDependentFiles(changedFiles.where(isValidInputFile)));
       })
       .then((Iterable<String> filteredFiles) {
         _logger.info("Running tasks on ${filteredFiles.length} files\n$filteredFiles");
@@ -165,6 +195,7 @@ class Builder {
    * Returns a [BuildResult] combining the results of all task runs.
    */
   Future<BuildResult> _build(Iterable<InputFile> files) {
+    firstBuild = false;
     // copy files so we can add the output of tasks to it
     var allFiles = new List.from(files);
     var prevOutDir;
@@ -202,6 +233,14 @@ class Builder {
           for (var file in taskResult.mappings.keys) {
             var newPath = taskOutDir.append(taskResult.mappings[file]);
             buildResult.mappings[file] = newPath.toString();
+            
+            // update dependency graph
+            taskResult.dependencies.forEach((input, deps) {
+              for (var dep in deps) {
+                _deps.putIfAbsent(dep, () => <String>[]);
+                _deps[dep].add(input);
+              }
+            });
           }
 
           // add the outputs to files so subsequent tasks can process them
