@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/util/async.dart';
+import 'package:buildtool/src/util/future_group.dart';
 import 'package:buildtool/src/util/io.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
@@ -255,7 +256,7 @@ class Builder {
       inDir = new Path(new Directory.current().path).join(inDir);
     }
     _logger.fine("symlinking sources from $inDir to $outDir");
-    var completer = new Completer();
+    var futureGroup = new FutureGroup();
 
     var listing = listDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
@@ -271,7 +272,8 @@ class Builder {
           var linkPath = outDir.join(relativePath);
           var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
-            new Symlink(e.path, linkPath.toString()).create();
+            futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
+                noDeference: true));
           }
         }
       } else if (e is Directory) {
@@ -285,13 +287,19 @@ class Builder {
         var dir = new Directory.fromPath(linkPath);
 
         if (!dir.existsSync()) {
-          new Symlink(e.path, linkPath.toString()).create();
+          _logger.info("symlinking ${e.path} $linkPath");
+          futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
+              noDeference: true, force: true));
         }
       } else if (e is Symlink) {
+        print("found symlink: $e");
+        var relativePath = new Path(e.path).relativeTo(inDir);
+        var linkPath = outDir.join(relativePath);
+        futureGroup.add(new Symlink(e.target, linkPath.toString()).create(
+            noDeference: true, force: true));
       }
-    },
-    onDone: () => completer.complete(null));
-    return completer.future;
+    });
+    return futureGroup.future;
   }
 
   /** Creates the output and gen directories */

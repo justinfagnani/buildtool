@@ -21,9 +21,11 @@ class Symlink extends FileSystemEntity {
   /**
    * Creates a new symlink that creates an alias from [link] -> [target].
    */
-  Future create() {
+  Future create({bool noDeference: false, bool force: false}) {
     var command = 'ln';
-    var args = ['-s', target, link];
+    var n = noDeference ? 'n' : '';
+    var f = force ? 'f' : '';
+    var args = ['-s$n$f', target, link];
 
     if (Platform.operatingSystem == 'windows') {
       // Call mklink on Windows to create an NTFS junction point. Only works on
@@ -39,9 +41,9 @@ class Symlink extends FileSystemEntity {
       if (result.exitCode != 0) {
         var message = 'unable to create symlink\n'
                       '  target: $target\n'
-                      '  link:$link\n'
-                      '  subprocess stdout:\n${result.stdout}\n'
-                      '  subprocess stderr:\n${result.stderr}';
+                      '  link: $link\n'
+                      '  subprocess stdout: ${result.stdout}\n'
+                      '  subprocess stderr: ${result.stderr}';
         _logger.severe(message);
         throw new RuntimeError(message);
       }
