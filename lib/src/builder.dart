@@ -259,15 +259,17 @@ class Builder {
 
     var listing = listDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
+      print("entity: $relativePath ${e.runtimeType} ");
       return isValidInputFile(relativePath.toString())
           && e is Directory
           && !e.path.endsWith("packages");
     });
 
     listing.listen((FileSystemEntity e) {
+      var relativePath = new Path(e.path).relativeTo(inDir);
       if (e is File) {
-        if (isValidInputFile(e.path)) {
-          var relativePath = new Path(e.path).relativeTo(inDir);
+        if (isValidInputFile(relativePath.toString())) {
+//          print('file: $relativePath $e');
           var linkPath = outDir.join(relativePath);
           var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
@@ -275,7 +277,6 @@ class Builder {
           }
         }
       } else if (e is Directory) {
-        var relativePath = new Path(e.path).relativeTo(inDir);
         // directories we don't recurse into still show up here
         // so skip them
         if (!isValidInputFile(relativePath.toString())) {
@@ -285,9 +286,13 @@ class Builder {
         var dir = new Directory.fromPath(linkPath);
 
         if (!dir.existsSync()) {
-          new Symlink(e.path, linkPath.toString()).create();
+          new Symlink(e.path, linkPath.toString()).create()
+              .catchError((e) {
+                print("error symlinking $linkPath");
+              });
         }
       } else if (e is Symlink) {
+        print("skipping symlink $e");
       }
     },
     onDone: () => completer.complete(null));
