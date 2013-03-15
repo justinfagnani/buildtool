@@ -26,7 +26,7 @@ class Server {
       : _builder = (builder != null)
             ? builder
             : new Builder(new Path(BUILD_DIR), new Path(GEN_DIR),
-                new Path(BUILD_DIR).append(DEPLOY_DIR), basePath: baseDir);
+                  new Path(DEPLOY_DIR), basePath: baseDir);
 
   Future<bool> start() {
     return _createLogFile().then((_) {

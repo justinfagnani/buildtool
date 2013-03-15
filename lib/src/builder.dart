@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:buildtool/glob.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/util/async.dart';
+import 'package:buildtool/src/util/future_group.dart';
 import 'package:buildtool/src/util/io.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
@@ -131,19 +132,18 @@ class Builder {
     return _cleanDir(deployDir)
       .then((_) => _createDir(deployDir))
       .then((_) {
+        var completer = new Completer();
         var listing = listDirectory(new Directory.fromPath(outDir),
             (e) => true);
         listing.listen((e) {
+          var relativePath = new Path(e.path).relativeTo(outDir);
+          var newPath = deployDir.join(relativePath);
           if (e is File) {
-            var relativePath = new Path(e.path);
-            var newPath = deployDir.join(relativePath);
             _logger.info("copying file $relativePath to $newPath");
             var copy = new File.fromPath(newPath);
             var bytes = e.readAsBytesSync();
             copy.writeAsBytesSync(bytes);
           } else if (e is Directory) {
-            var relativePath = new Path(e.path);
-            var newPath = deployDir.join(relativePath);
             _logger.info("copying dir $relativePath to $newPath");
             // TODO(justinfagnani): skip dev-only package dependcies
             var copy = new Directory.fromPath(newPath);
@@ -151,9 +151,9 @@ class Builder {
           } else if (e is Symlink) {
             // ?
           }
-        });
-        // transform stream to future
-        return listing.reduce(true, (_, e) => true);
+        },
+        onDone: () { completer.complete(null); });
+        return completer.future;
       });
   }
 
@@ -255,7 +255,7 @@ class Builder {
       inDir = new Path(new Directory.current().path).join(inDir);
     }
     _logger.fine("symlinking sources from $inDir to $outDir");
-    var completer = new Completer();
+    var futureGroup = new FutureGroup();
 
     var listing = listDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
@@ -273,7 +273,8 @@ class Builder {
           var linkPath = outDir.join(relativePath);
           var file = new File.fromPath(linkPath);
           if (!file.existsSync()) {
-            new Symlink(e.path, linkPath.toString()).create();
+            futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
+                noDeference: true));
           }
         }
       } else if (e is Directory) {
@@ -286,17 +287,21 @@ class Builder {
         var dir = new Directory.fromPath(linkPath);
 
         if (!dir.existsSync()) {
-          new Symlink(e.path, linkPath.toString()).create()
-              .catchError((e) {
-                print("error symlinking $linkPath");
-              });
+          _logger.info("symlinking ${e.path} $linkPath");
+          futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
+              noDeference: true, force: true));
         }
       } else if (e is Symlink) {
-        print("skipping symlink $e");
+        print("found symlink: $e");
+        if (e.target != null) {
+          var relativePath = new Path(e.path).relativeTo(inDir);
+          var linkPath = outDir.join(relativePath);
+          futureGroup.add(new Symlink(e.target, linkPath.toString()).create(
+              noDeference: true, force: true));
+        }
       }
-    },
-    onDone: () => completer.complete(null));
-    return completer.future;
+    });
+    return futureGroup.future;
   }
 
   /** Creates the output and gen directories */

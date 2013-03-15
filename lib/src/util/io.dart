@@ -43,8 +43,11 @@ Stream<FileSystemEntity> listDirectory(Directory dir,
   var controller = new StreamController<FileSystemEntity>();
   int openStreamCount = 0;
 
-  void _list(Directory _dir, Path fullParentPath) {
-    var stream = _dir.list();
+  void _list(FileSystemEntity dir, Path fullParentPath) {
+    if (dir is Symlink) {
+      dir = new Directory.fromPath(getFullPath(dir.path));
+    }
+    var stream = (dir as Directory).list();
     openStreamCount++;
     StreamSubscription sub;
     sub = stream.listen(
@@ -54,15 +57,15 @@ Stream<FileSystemEntity> listDirectory(Directory dir,
             var expectedFullPath = fullParentPath.append(path.filename).toString();
             var fullPath = getFullPath(path);
 
-            if (fullPath.toString() != expectedFullPath.toString()) {
-              controller.add(new Symlink(fullPath.toString(), path.toString(),
-                  isDirectory: true));
-            } else {
-              controller.add(e);
-            }
-            if (recurse(e) &&
+            var entity = (fullPath.toString() != expectedFullPath.toString())
+                ? new Symlink(fullPath.toString(), path.toString(),
+                    isDirectory: true)
+                : e;
+            controller.add(entity);
+
+            if (recurse(entity) &&
                 !(fullParentPath.toString().startsWith(fullPath.toString()))) {
-              _list(e, fullPath);
+              _list(entity, fullPath);
             }
           } else if (e is File) {
             var expectedFullPath = fullParentPath.append(path.filename).toString();
