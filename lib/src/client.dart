@@ -60,7 +60,7 @@ class Client {
       bool machine: false,
       List<String> changedFiles: const [],
       List<String> removedFiles: const []}) {
-    _logger.info("Build...");
+    _logger.info("Build... $deploy");
     var filteredFiles = changedFiles.where(isValidInputFile).toList();
     if (machine && filteredFiles.isEmpty) {
       _logger.info("no changed files");

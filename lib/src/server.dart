@@ -169,7 +169,7 @@ class Server {
     return new File(LOG_FILE).create().then((log) {
       _logSink = log.openWrite(FileMode.APPEND);
       Logger.root.level = Level.FINE;
-      Logger.root.on.record.add((LogRecord r) {
+      Logger.root.onRecord.listen((LogRecord r) {
         var m = "${r.time} ${r.loggerName} ${r.level} ${r.message}\n";
         _logSink.addString(m);
         stdout.addString(m);

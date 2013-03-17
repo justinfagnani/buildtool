@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:uri';
 import 'package:logging/logging.dart';
+import 'package:buildtool/src/util/future_group.dart';
 
 part 'symlink.dart';
 
@@ -24,79 +25,59 @@ Future<String> byteStreamToString(Stream<List<int>> stream) =>
     stream.transform(new StringDecoder()).toList().then((l) => l.join(''));
 
 Path getFullPath(path) =>
-    new Path(((path is Path) 
-        ? new File.fromPath(path)
-        : new File(path)).fullPathSync());
+    new Path(((path is Path) ? new File.fromPath(path) : new File(path))
+        .fullPathSync());
 
 /**
  * Lists the sub-directories and files of this Directory. Optionally recurses
- * into sub-directories based on the return value of the [recurse] parameter.
- * [recurse] is called with either a [Directory] or a [Symlink] that is linked
- * to a directory. If [recurse] returns true, then it's argument is listed.
+ * into sub-directories based on the return value of [visit].
+ * [visit] is called with a [File], [Directory] or [Symlink] to a directory,
+ * never a Symlink to a File. If [visit] returns true, then it's argument is
+ * listed recursively.
  *
- * The result is a stream of FileSystemEntity objects for the directories,
- * files, and symlinks. Please see [Symlink], which is a [FileSystemEntity]
- * subclass that this library introduces.
+ * Please see [Symlink], which is a [FileSystemEntity] subclass that this
+ * library introduces.
  */
-Stream<FileSystemEntity> listDirectory(Directory dir,
-    bool recurse(FileSystemEntity dir)) {
-  var controller = new StreamController<FileSystemEntity>();
-  int openStreamCount = 0;
-
-  void _list(FileSystemEntity dir, Path fullParentPath) {
-    if (dir is Symlink) {
-      dir = new Directory.fromPath(getFullPath(dir.path));
-    }
-    var stream = (dir as Directory).list();
-    openStreamCount++;
-    StreamSubscription sub;
-    sub = stream.listen(
-        (FileSystemEntity e) {
-          var path = new Path(e.path);
-          if (e is Directory) {
-            var expectedFullPath = fullParentPath.append(path.filename).toString();
-            var fullPath = getFullPath(path);
-
-            var entity = (fullPath.toString() != expectedFullPath.toString())
-                ? new Symlink(fullPath.toString(), path.toString(),
-                    isDirectory: true)
-                : e;
-            controller.add(entity);
-
-            if (recurse(entity) &&
-                !(fullParentPath.toString().startsWith(fullPath.toString()))) {
-              _list(entity, fullPath);
-            }
-          } else if (e is File) {
-            var expectedFullPath = fullParentPath.append(path.filename).toString();
-            var fullPath = e.fullPathSync();
-
-            if (fullPath.toString() != expectedFullPath.toString()) {
-              controller.add(new Symlink(fullPath.toString(), path.toString()));
-            } else {
-              controller.add(e);
-            }
+Future visitDirectory(Directory dir, Future<bool> visit(FileSystemEntity f)) {
+  var futureGroup = new FutureGroup();
+  
+  void _list(Directory dir, Path fullParentPath) {
+    var listCompleter = new Completer();
+    futureGroup.add(listCompleter.future);
+    var sub;
+    sub = dir.list().listen((FileSystemEntity e) {
+      var path = new Path(e.path);
+      var expectedFullPath = fullParentPath.append(path.filename).toString();
+      var fullPath = getFullPath(path);
+      var entity = (fullPath.toString() != expectedFullPath.toString())
+          ? new Symlink(fullPath.toString(), path.toString(),
+              isDirectory: e is Directory)
+          : e;
+      var future = visit(entity);
+      if (future != null) {
+        futureGroup.add(future.then((bool recurse) {
+          // recurse on directories, but not cyclic symlinks
+          if (e is Directory && recurse == true &&
+              !(fullParentPath.toString().startsWith(fullPath.toString()))) {
+            _list(e, fullPath);
           }
-        },
-        onError: (AsyncError e) {
-          var error = e.error;
-          if (error is DirectoryIOException) {
-            // must be a broken symlink. error.path is local path
-            controller.add(new Symlink(null, error.path));
-          } else {
-            controller.signalError(e);
-            sub.cancel();
-          }
-        },
-        onDone: () {
-          openStreamCount--;
-          if (openStreamCount == 0) {
-            controller.close();
-          }
-        },
-        unsubscribeOnError: false);
+        }));
+      }
+    },
+    onError: (AsyncError e) {
+      var error = e.error;
+      if (error is DirectoryIOException) {
+        // must be a broken symlink. error.path is local path
+        futureGroup.add(visit(new Symlink(null, error.path)));
+      } else {
+        listCompleter.completeError(e);
+        sub.cancel();
+      }
+    },
+    onDone: () { listCompleter.complete(null); },
+    unsubscribeOnError: false);
   }
   _list(dir, getFullPath(dir.path));
 
-  return controller.stream;
+  return futureGroup.future;
 }

@@ -43,7 +43,7 @@ main() {
       .then(expectAsync1((_) {
         var results = [];
 
-        listDirectory(testDir, (_) => true).listen((FileSystemEntity e) {
+        visitDirectory(testDir, (FileSystemEntity e) {
           if (e is File) {
             results.add("file: ${e.path} : ${e.fullPathSync()}");
           } else if (e is Directory) {
@@ -54,11 +54,8 @@ main() {
           } else {
             throw "bad";
           }
-        },
-        onError: (AsyncError e) {
-          expect(true, false);
-        },
-        onDone: expectAsync0(() {
+          return new Future.immediate(true);
+        }).then(expectAsync1((_) {
           var testPathFull = new File.fromPath(testPath).fullPathSync();
           expect(results, unorderedEquals([
               "file: $testPath/file_target : $testPathFull/file_target",
@@ -69,7 +66,9 @@ main() {
               "file: $testPath/dir_link/file : $testPathFull/dir_target/file",
               "link: $testPath/broken_link : null",
             ]));
-        }));
+        })).catchError((AsyncError e) {
+          expect(true, false);
+        });
       }));
     });
 
@@ -79,9 +78,12 @@ main() {
       new Directory.fromPath(testPath.append('dir2')).createSync();
       new File.fromPath(testPath.append('dir2/file')).createSync();
 
-      listDirectory(testDir, (e) => !e.path.endsWith('dir2')).toList()
-      .then(expectAsync1((results) {
-        expect(results.map((e) => e.path), unorderedEquals([
+      var files = [];
+      visitDirectory(testDir, (e) {
+        files.add(e);
+        return new Future.immediate(!e.path.endsWith('dir2'));
+      }).then(expectAsync1((_) {
+        expect(files.map((e) => e.path), unorderedEquals([
             "$testPath/dir",
             "$testPath/dir/file",
             "$testPath/dir2",
@@ -93,10 +95,13 @@ main() {
       var dir = new Directory.fromPath(testPath.append('dir'))..createSync();
       new Symlink('../dir', testPath.append('dir/link').toString()).create()
         .then(expectAsync1((_) {
-          var listing = listDirectory(dir, (_) => true);
-          listing.toList().then(expectAsync1((list) {
-            expect(list.length, 1);
-            expect(list.first.target, getFullPath(dir.path));
+          var files = [];
+          visitDirectory(dir, (e) {
+            files.add(e);
+            return new Future.immediate(true);
+          }).then(expectAsync1((_) {
+            expect(files.length, 1);
+            expect(files.first.target, getFullPath(dir.path));
           }));
         }));
     });
