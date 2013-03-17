@@ -4,6 +4,18 @@
 
 part of buildtool.util.io;
 
+bool isSymlink(String pathString) {
+  var path = new Path(pathString);
+
+  var parentPath = path.directoryPath;
+  var fullParentPath = new File.fromPath(parentPath).fullPathSync();
+  var expectedPath = new Path(fullParentPath).append(path.filename).toString();
+
+  var fullPath = new File.fromPath(path).fullPathSync();
+
+  return fullPath != expectedPath;
+}
+
 class Symlink extends FileSystemEntity {
   final String target;
   final String link;
