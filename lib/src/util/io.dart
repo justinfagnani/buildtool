@@ -10,8 +10,6 @@ import 'dart:uri';
 import 'package:logging/logging.dart';
 import 'package:buildtool/src/util/future_group.dart';
 
-part 'symlink.dart';
-
 Logger _logger = new Logger('io');
 
 String uriToNativePath(Uri uri) {
@@ -22,11 +20,13 @@ String uriToNativePath(Uri uri) {
 }
 
 Future<String> byteStreamToString(Stream<List<int>> stream) =>
-    stream.transform(new StringDecoder()).toList().then((l) => l.join(''));
+    stream.transform(new StringDecoder()).toList().then((l) => l.join());
 
 Path getFullPath(path) =>
     new Path(((path is Path) ? new File.fromPath(path) : new File(path))
         .fullPathSync());
+
+typedef void F(bool b, bool a(String s));
 
 /**
  * Lists the sub-directories and files of this Directory. Optionally recurses
@@ -41,43 +41,38 @@ Path getFullPath(path) =>
 Future visitDirectory(Directory dir, Future<bool> visit(FileSystemEntity f)) {
   var futureGroup = new FutureGroup();
   
-  void _list(Directory dir, Path fullParentPath) {
-    var listCompleter = new Completer();
-    futureGroup.add(listCompleter.future);
+  void _list(Directory dir) {
+    var completer = new Completer();
+    futureGroup.add(completer.future);
     var sub;
-    sub = dir.list().listen((FileSystemEntity e) {
-      var path = new Path(e.path);
-      var expectedFullPath = fullParentPath.append(path.filename).toString();
-      var fullPath = getFullPath(path);
-      var entity = (fullPath.toString() != expectedFullPath.toString())
-          ? new Symlink(fullPath.toString(), path.toString(),
-              isDirectory: e is Directory)
-          : e;
+    sub = dir.list(followLinks: false).listen((FileSystemEntity entity) {
       var future = visit(entity);
       if (future != null) {
         futureGroup.add(future.then((bool recurse) {
           // recurse on directories, but not cyclic symlinks
-          if (e is Directory && recurse == true &&
-              !(fullParentPath.toString().startsWith(fullPath.toString()))) {
-            _list(e, fullPath);
+          if (entity is! File && recurse == true) {
+            if (entity is Link) { 
+              if (FileSystemEntity.typeSync(entity.path, followLinks: true) == 
+                    FileSystemEntityType.DIRECTORY) {
+                var fullPath = getFullPath(entity.path).toString();
+                var dirFullPath = getFullPath(dir.path).toString();
+                if (!dirFullPath.startsWith(fullPath)) {
+                  _list(new Directory(entity.path));
+                }
+              }
+            } else {
+              _list(entity);
+            }
           }
         }));
       }
     },
-    onError: (AsyncError e) {
-      var error = e.error;
-      if (error is DirectoryIOException) {
-        // must be a broken symlink. error.path is local path
-        futureGroup.add(visit(new Symlink(null, error.path)));
-      } else {
-        listCompleter.completeError(e);
-        sub.cancel();
-      }
+    onDone: () {
+      completer.complete(null);
     },
-    onDone: () { listCompleter.complete(null); },
-    unsubscribeOnError: false);
+    unsubscribeOnError: true);
   }
-  _list(dir, getFullPath(dir.path));
+  _list(dir);
 
   return futureGroup.future;
 }

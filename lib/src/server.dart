@@ -39,8 +39,8 @@ class Server {
 
         return _writeLockFile(_builder.basePath, server.port)
           .then((int port) {
-            stdout.addString("buildtool server ready\n");
-            stdout.addString("port: ${port}\n");
+            stdout.write("buildtool server ready\n");
+            stdout.write("port: ${port}\n");
             if (port != server.port) {
               _logger.info("Another server already running on port $port.");
               server.close();
@@ -110,7 +110,7 @@ class Server {
     req.response
       ..contentLength = str.length
       ..headers.contentType = JSON_TYPE
-      ..addString(str)
+      ..write(str)
       ..close();
   }
 
@@ -167,12 +167,12 @@ class Server {
 
   Future _createLogFile() {
     return new File(LOG_FILE).create().then((log) {
-      _logSink = log.openWrite(FileMode.APPEND);
+      _logSink = log.openWrite(mode: FileMode.APPEND);
       Logger.root.level = Level.FINE;
       Logger.root.onRecord.listen((LogRecord r) {
         var m = "${r.time} ${r.loggerName} ${r.level} ${r.message}\n";
-        _logSink.addString(m);
-        stdout.addString(m);
+        _logSink.write(m);
+        stdout.write(m);
       });
       return true;
     });

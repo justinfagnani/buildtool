@@ -43,10 +43,12 @@ class Builder {
             ? new Path(new Directory.current().path)
             : basePath {
               
-    this.buildDir = (buildDir.isAbsolute) ? buildDir : this.basePath.join(buildDir);
+    this.buildDir = (buildDir.isAbsolute) 
+        ? buildDir : this.basePath.join(buildDir);
     this.genDir = (genDir.isAbsolute) ? genDir : this.basePath.join(genDir);
     this.outDir = this.buildDir.append(OUT_DIR);
-    this.deployDir = (deployDir.isAbsolute) ? deployDir : this.buildDir.join(deployDir);
+    this.deployDir = (deployDir.isAbsolute) 
+        ? deployDir : this.buildDir.join(deployDir);
   }
 
   /**
@@ -94,11 +96,10 @@ class Builder {
         // get the files to operate on
         return (changedFiles.isEmpty || clean)
             ? _getAllFiles()
-            : new Future.immediate(
-                changedFiles.where(isValidInputFile));
+            : changedFiles.where(isValidInputFile);
       })
       .then((Iterable<String> filteredFiles) {
-        _logger.info("Running tasks on ${filteredFiles.length} files\n$filteredFiles");
+        _logger.info("Running tasks on ${filteredFiles.length} files");
         // add the prefix '_source' to file patterns with no task prefix
         var files = filteredFiles.map((f) =>
             new InputFile(SOURCE_PREFIX, f, basePath.toString()));
@@ -132,7 +133,7 @@ class Builder {
     Path _getRelativePath(String p) {
       if (p.startsWith(buildDir.toString())) {
         var segments = new Path(p).relativeTo(buildDir).segments();
-        segments = segments.getRange(1, segments.length - 1);
+        segments = segments.sublist(1, segments.length - 1);
         return new Path(segments.join('/'));
       } else if (p.startsWith(basePath.toString())) {
         return new Path(p).relativeTo(basePath);
@@ -141,7 +142,7 @@ class Builder {
     return _cleanDir(deployDir)
       .then((_) => _createDir(deployDir))
       .then((_) {
-        print("deployDir: $deployDir");
+        _logger.fine("deployDir: $deployDir");
         var futureGroup = new FutureGroup();
         var completer = new Completer();
         futureGroup.add(completer.future);
@@ -151,20 +152,22 @@ class Builder {
           var newPath = deployDir.join(relativePath);
           
           if (e is File) {
-            _logger.info("copying file ${e.path} ($relativePath) to $newPath");
+            _logger.fine("copying file ${e.path} to $newPath");
             // copy file
             new File.fromPath(newPath).writeAsBytesSync(e.readAsBytesSync());
             return new Future.immediate(false);
             
           } else if (e is Directory) {
-            _logger.info("copying dir $relativePath to $newPath");
+            _logger.fine("copying dir ${e.path} to $newPath");
             // TODO(justinfagnani): skip dev-only package dependcies
             var copy = new Directory.fromPath(newPath);
             copy.createSync();
             return new Future.immediate(true);
             
-          } else if (e is Symlink) {
-            if (e.target == null) {
+          } else if (e is Link) {
+            var target = e.targetSync();
+            var linkType = FileSystemEntity.typeSync(target, followLinks:true);
+            if (linkType == FileSystemEntityType.NOT_FOUND) {
               return new Future.immediate(false);
             }
             /* There are 3 cases of symlinks in build_out/out:
@@ -177,11 +180,11 @@ class Builder {
                     relative location, usually a packages symlink. This is an
                     internal link, so replicate it. Don't recurse.
              */
-            bool targetInProject = e.target.startsWith(basePath.toString());
+            bool targetInProject = target.startsWith(basePath.toString());
             // the relative path within the out directory
-            var relativeLinkPath = new Path(e.link).relativeTo(outDir);
+            var relativeLinkPath = new Path(e.path).relativeTo(outDir);
             // the relative path within the source directory
-            var relativeTargetPath = _getRelativePath(e.target);
+            var relativeTargetPath = _getRelativePath(target);
             
             // if they're the same, then it's a link to an original dir and we
             // should recurse to copy the subtree. If they're different it's an
@@ -193,10 +196,10 @@ class Builder {
               copy.createSync();   
               return new Future.immediate(true); // recurse
             } else {
-              print("skipping internal link: $e\n"
+              _logger.fine("skipping internal link: $e\n"
                     "  $relativeTargetPath $relativeLinkPath");
-              var future = new Symlink(relativeTargetPath.toString(), relativePath.toString())
-                  .create(noDeference: true, force: true);
+              var future = new Link.fromPath(relativePath)
+                  .create(relativeTargetPath.toNativePath());
               futureGroup.add(future);
               return future.then((_) => false); // don't recurse
             }
@@ -204,44 +207,6 @@ class Builder {
         });
       });
   }
-//        listing.listen((e) {
-//          var relativePath = new Path(e.path).relativeTo(outDir);
-//          var newPath = deployDir.join(relativePath);
-//          if (e is File) {
-//            _logger.info("copying file ${e.path} ($relativePath) to $newPath");
-//            var copy = new File.fromPath(newPath);
-//            var bytes = e.readAsBytesSync();
-//            copy.writeAsBytesSync(bytes);
-//          } else if (e is Directory) {
-//            _logger.info("copying dir $relativePath to $newPath");
-//            // TODO(justinfagnani): skip dev-only package dependcies
-//            var copy = new Directory.fromPath(newPath);
-//            copy.createSync();
-//          } else if (e is Symlink) {
-//            if (e.target == null) {
-//              return;
-//            }
-//            bool targetInProject = e.target.startsWith(basePath.toString());
-//            // the relative path within the out directory
-//            var relativeLinkPath = new Path(e.link).relativeTo(outDir);
-//            // the relative path withing the source directory
-//            var relativeTargetPath = _getRelativePath(e.target);
-//            if (relativeLinkPath.toString() == relativeTargetPath.toString()
-//                || !targetInProject) {
-//              var copy = new Directory.fromPath(newPath);
-//              copy.createSync();              
-//            } else {
-//              print("skipping internal link: $e\n"
-//                    "  $relativeTargetPath $relativeLinkPath");
-//              futureGroup.add(new Symlink(relativeTargetPath.toString(), relativePath.toString())
-//                .create(noDeference: true, force: true));
-//            }
-//          }
-//        },
-//        onDone: () { completer.complete(null); });
-//        return futureGroup.future;
-//      });
-//  }
   
   /**
    * Runs each task with the set of files that match it's glob entries. After
@@ -344,85 +309,45 @@ class Builder {
 
     return visitDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
-      print("entity: $relativePath ${e.runtimeType} ");
+      if (!isValidInputFile(relativePath.toString())) {
+        return new Future.immediate(false);
+      }
       
       if (e is File) {
-        if (isValidInputFile(relativePath.toString())) {
-//          print('file: $relativePath $e');
-          var linkPath = outDir.join(relativePath);
-          var file = new File.fromPath(linkPath);
-          if (!file.existsSync()) {
-            return new Symlink(e.path, linkPath.toString())
-                .create(noDeference: true).then((_) => false);
-          }
+        var linkPath = outDir.join(relativePath);
+        var file = new File.fromPath(linkPath);
+        if (!file.existsSync()) {
+          return new Link.fromPath(linkPath).create(e.path)
+              .then((_) => false);
         }
-
       } else if (e is Directory) {
-        if (!isValidInputFile(relativePath.toString())) {
-          return new Future.immediate(false);
-        }
         var linkPath = outDir.join(relativePath);
         var dir = new Directory.fromPath(linkPath);
 
         if (!dir.existsSync()) {
-//          _logger.info("symlinking ${e.path} $linkPath");
-          return new Symlink(e.path, linkPath.toString())
-              .create(noDeference: true, force: true).then((_) => true);
+          return new Link.fromPath(linkPath).create(e.path)
+              .then((_) => true);
         }
         
-      } else if (e is Symlink) {
-//        print("found symlink: $e");
-        if (e.target != null) {
+      } else if (e is Link) {
+        var target = e.targetSync(); 
+        if (target != null) {
           var relativePath = new Path(e.path).relativeTo(inDir);
           var linkPath = outDir.join(relativePath);
-          new Symlink(e.target, linkPath.toString())
-              .create(noDeference: true, force: true).then((_) => false);
+          var linkType = FileSystemEntity
+              .typeSync(linkPath.toNativePath(), followLinks: false);
+          if (linkType == FileSystemEntityType.NOT_FOUND) {
+            return new Link.fromPath(linkPath).create(target)
+                .then((_) => false)
+                .catchError((e) {
+                  _logger.severe("error creating link: $e target: $target");
+                  return false;
+                });
+          }
         }
       }
       return new Future.immediate(false);
-
-//      
-//      return isValidInputFile(relativePath.toString())
-//          && e is Directory
-//          && !e.path.endsWith("packages");
     });
-
-//    listing.listen((FileSystemEntity e) {
-//      var relativePath = new Path(e.path).relativeTo(inDir);
-//      if (e is File) {
-//        if (isValidInputFile(relativePath.toString())) {
-////          print('file: $relativePath $e');
-//          var linkPath = outDir.join(relativePath);
-//          var file = new File.fromPath(linkPath);
-//          if (!file.existsSync()) {
-//            futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
-//                noDeference: true));
-//          }
-//        }
-//      } else if (e is Directory) {
-//        // directories we don't recurse into still show up here
-//        // so skip them
-//        if (!isValidInputFile(relativePath.toString())) {
-//          return false;
-//        }
-//        var linkPath = outDir.join(relativePath);
-//        var dir = new Directory.fromPath(linkPath);
-//
-//        if (!dir.existsSync()) {
-////          _logger.info("symlinking ${e.path} $linkPath");
-//          futureGroup.add(new Symlink(e.path, linkPath.toString()).create(
-//              noDeference: true, force: true));
-//        }
-//      } else if (e is Symlink) {
-////        print("found symlink: $e");
-//        if (e.target != null) {
-//          var relativePath = new Path(e.path).relativeTo(inDir);
-//          var linkPath = outDir.join(relativePath);
-//          futureGroup.add(new Symlink(e.target, linkPath.toString()).create(
-//              noDeference: true, force: true));
-//        }
-//      }
-//    });
   }
 
   /** Creates the output and gen directories */
@@ -437,11 +362,15 @@ class Builder {
       var create = (exists) ? new Future.immediate(true) : dir.create();
       return create.then((_) {
         // create pub symlink
-        var linkPath = buildDirPath.append(PACKAGES).toNativePath();
-        if (!dirSymlinkExists(linkPath)) {
-          removeBrokenDirSymlink(linkPath);
+        var linkPath = buildDirPath.append(PACKAGES);
+        var linkType = FileSystemEntity.typeSync(linkPath.toNativePath(), 
+            followLinks: true);
+        if (linkType != FileSystemEntityType.DIRECTORY) {
+          if (linkType != FileSystemEntityType.NOT_FOUND) {
+            new Link.fromPath(linkPath).deleteSync();
+          }
           var targetPath = new File(PACKAGES).fullPathSync();
-          return new Symlink(targetPath, linkPath).create();
+          return new Link.fromPath(linkPath).create(targetPath);
         } else {
           return new Future.immediate(null);
         }
@@ -470,14 +399,15 @@ class Builder {
   Future<Iterable<String>> _getAllFiles() {
     var files = <String>[];
     return visitDirectory(new Directory.fromPath(basePath), (e) {
+      var relativePath = new Path(e.path).relativeTo(basePath);
+      if (!isValidInputFile(relativePath.toString())) {
+        return new Future.immediate(false);
+      }
       if (e is File) {
         files.add(_toString(new Path(e.path).relativeTo(basePath)));
         return new Future.immediate(false);
       } else {
-        var relativePath = new Path(e.path).relativeTo(basePath);
-        return new Future.immediate(
-            isValidInputFile(relativePath.toString()) 
-            && !e.path.endsWith(PACKAGES));
+        return new Future.immediate(!e.path.endsWith(PACKAGES));
       }
     }).then((_) => files);
   }

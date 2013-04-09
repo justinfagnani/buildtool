@@ -91,7 +91,6 @@ class Launcher {
    * Returns the port of the running builtool server, or starts a new server.
    */
   Future<int> _getServerPort() {
-    var completer = new Completer();
     var lockFile = new File.fromPath(baseDir.append(BUILDLOCK_FILE));
     if (lockFile.existsSync()) {
       try {
@@ -107,21 +106,18 @@ class Launcher {
 
         var lockLastModified = lockFile.lastModifiedSync();
         if (buildLastModified.isBefore(lockLastModified)) {
-          completer.complete(port);
+          return new Future.immediate(port);
         } else {
           // restart server
           var client = new Client(port);
-          client.quit().then((_) {
-            _startServer().then((v) => completer.complete(v));
-          });
+          return client.quit().then((_) => _startServer());
         }
-      } on Error catch (e) {
-        completer.completeError(e);
+      } on Error catch (error, stackTrace) {
+        return new Future.immediateError(error, stackTrace);
       }
     } else {
-      _startServer().then((v) => completer.complete(v));
+      return _startServer();
     }
-    return completer.future;
   }
 
   // set to false in development to be able to see output from the server when
@@ -130,27 +126,22 @@ class Launcher {
 
   Future<int> _startServer() {
     _logger.info("Starting build server");
-    var completer = new Completer();
     _logger.info("build script: ${_options.script}");
     var vmExecutable = _options.executable;
-    _runScript(vmExecutable, [_options.script, '--server']).then((process) {
+    return _runScript(vmExecutable, [_options.script, '--server']).then((process) {
       _logger.info("Server started: ${process.stdout}");
-      process.stdout
+      return process.stdout
         .transform(new StringDecoder())
         .transform(new LineTransformer())
-        .listen((String line) {
-          _logger.fine("server: $line");
+        .where((line) => line.startsWith("port: ") || line.startsWith("error"))
+        .first
+        .then((String line) {
           if (line.startsWith("port: ")) {
-            var port = int.parse(line.substring("port: ".length));
-            completer.complete(port);
+            return int.parse(line.substring("port: ".length));
           } else if (line.startsWith("error")) {
-            completer.completeError("error");
+            throw new RuntimeError("Error starting server: $line");
           }
-        },
-        onDone: () {
-          _logger.info("Server stopped: ${process.exitCode}");
         });
       });
-    return completer.future;
   }
 }

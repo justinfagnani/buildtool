@@ -92,6 +92,7 @@ main() {
           // must convert Paths to Strings for equality
           // TODO(justinfagnani): remove toString when dartbug.com/6755 is fixed
           expect(task.outDir.toString(), taskOutPath.toString());
+          // TODO: uncomment this line when we figure out the correct location
 //          expect(task.genDir.toString(), genPath.toString());
         }));
   });

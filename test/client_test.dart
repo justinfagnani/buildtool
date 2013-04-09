@@ -18,6 +18,7 @@ import 'package:unittest/unittest.dart';
 import 'mock_task.dart';
 
 
+// TODO: use addStream();
 class MockConsumer<S, T> implements StreamConsumer<S, T> {
   List<S> data = <S>[];
   Future<T> consume(Stream<S> stream) {

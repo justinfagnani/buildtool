@@ -75,7 +75,7 @@ main() {
     mockClient.when(callsTo('build')).thenReturn(new Future.immediate(true));
     int port;
 
-    print(new Directory.current().path);
+//    print(new Directory.current().path);
     var lockFile = new File('test/data/$BUILDLOCK_FILE');
     lockFile.writeAsStringSync("54321");
 

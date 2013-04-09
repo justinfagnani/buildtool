@@ -33,42 +33,36 @@ main() {
       new File.fromPath(testPath.append('file_target')).createSync();
       new Directory.fromPath(testPath.append('dir_target')).createSync();
       new File.fromPath(testPath.append('dir_target/file')).createSync();
-      Future.wait([
-        new Symlink('file_target', testPath.append('file_link').toString())
-            .create(),
-        new Symlink('dir_target', testPath.append('dir_link').toString())
-            .create(),
-        new Symlink('broken_target', testPath.append('broken_link').toString())
-            .create()])
-      .then(expectAsync1((_) {
-        var results = [];
+      new Link.fromPath(testPath.append('file_link')).createSync('file_target');
+      new Link.fromPath(testPath.append('dir_link')).createSync('dir_target');
+      new Link.fromPath(testPath.append('broken_link'))
+          .createSync('broken_target');
+      
+      var results = [];
 
-        visitDirectory(testDir, (FileSystemEntity e) {
-          if (e is File) {
-            results.add("file: ${e.path} : ${e.fullPathSync()}");
-          } else if (e is Directory) {
-            var f = new File(e.path);
-            results.add("dir: ${e.path} : ${f.fullPathSync()}");
-          } else if (e is Symlink) {
-            results.add("link: ${e.link} : ${e.target}");
-          } else {
-            throw "bad";
-          }
-          return new Future.immediate(true);
-        }).then(expectAsync1((_) {
-          var testPathFull = new File.fromPath(testPath).fullPathSync();
-          expect(results, unorderedEquals([
-              "file: $testPath/file_target : $testPathFull/file_target",
-              "dir: $testPath/dir_target : $testPathFull/dir_target",
-              "file: $testPath/dir_target/file : $testPathFull/dir_target/file",
-              "link: $testPath/file_link : $testPathFull/file_target",
-              "link: $testPath/dir_link : $testPathFull/dir_target",
-              "file: $testPath/dir_link/file : $testPathFull/dir_target/file",
-              "link: $testPath/broken_link : null",
-            ]));
-        })).catchError((AsyncError e) {
-          expect(true, false);
-        });
+      visitDirectory(testDir, (FileSystemEntity e) {
+        if (e is File) {
+          results.add("file: ${e.path}");
+        } else if (e is Directory) {
+          results.add("dir: ${e.path}");
+        } else if (e is Link) {
+          results.add("link: ${e.path}, ${e.targetSync()}");
+        } else {
+          throw "bad";
+        }
+        return new Future.immediate(true);
+      }).then(expectAsync1((_) {
+        var testPathFull = new File.fromPath(testPath).fullPathSync();
+        var expectation = [
+         "file: $testPath/file_target",
+         "dir: $testPath/dir_target",
+         "file: $testPath/dir_target/file",
+         "link: $testPath/file_link, file_target",
+         "link: $testPath/dir_link, dir_target",
+         "file: $testPath/dir_link/file",
+         "link: $testPath/broken_link, broken_target",
+         ];
+        expect(results, unorderedEquals(expectation));
       }));
     });
 
@@ -91,21 +85,25 @@ main() {
       }));
     });
 
-    test('symlink cycle', () {
+    test("symlink cycles don't cause infinite recursion", () {
       var dir = new Directory.fromPath(testPath.append('dir'))..createSync();
-      new Symlink('../dir', testPath.append('dir/link').toString()).create()
-        .then(expectAsync1((_) {
-          var files = [];
-          visitDirectory(dir, (e) {
-            files.add(e);
-            return new Future.immediate(true);
-          }).then(expectAsync1((_) {
-            expect(files.length, 1);
-            expect(files.first.target, getFullPath(dir.path));
-          }));
-        }));
+      new Link.fromPath(testPath.append('dir/link')).createSync('../dir');
+      var files = [];
+      visitDirectory(dir, (e) {
+        files.add(e);
+        return new Future.immediate(true);
+      }).then(expectAsync1((_) {
+        expect(files.length, 1);
+        expect(files.first.targetSync(), '../dir');
+      }));
     });
   });
 }
 
-String getFullPath(String path) => new File(path).fullPathSync();
+String getFullPath(String path) {
+  try {
+    return new File(path).fullPathSync();
+  } on FileIOException catch(e) {
+    return null;
+  }
+}

@@ -77,7 +77,7 @@ class Client {
             },
           }]);
           // write message for the Editor to receive
-          _outputSink.addString("$message\n");
+          _outputSink.write("$message\n");
           return true;
         }
       });
