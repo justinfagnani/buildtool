@@ -27,6 +27,8 @@ class DwcTask extends Task {
     for (var file in files) {
       var fileOutDir = outDir.append(file.path).directoryPath;
       var args = ['--out', outDir.toString()];
+      print("baseDir: $baseDir");
+      print("outDir: $outDir");
       args.addAll(['--basedir', baseDir.toString()]);
       args.add(file.inputPath.toNativePath());
       futures.add(dwc.run(args));
@@ -37,7 +39,9 @@ class DwcTask extends Task {
 
       for (var result in results) {
         for (var output in result.outputs.keys) {
-          var outputPath = output.substring(outDir.toString().length + 1);
+          var outputPath = new Path(output).relativeTo(outDir).toString();
+
+//          var outputPath = output.substring(outDir.toString().length + 1);
           outputs.add(outputPath);
           if (result.outputs[output] != null) {
             var sourcePath = result.outputs[output];
