@@ -106,14 +106,14 @@ class Launcher {
 
         var lockLastModified = lockFile.lastModifiedSync();
         if (buildLastModified.isBefore(lockLastModified)) {
-          return new Future.immediate(port);
+          return new Future.value(port);
         } else {
           // restart server
           var client = new Client(port);
           return client.quit().then((_) => _startServer());
         }
       } on Error catch (error, stackTrace) {
-        return new Future.immediateError(error, stackTrace);
+        return new Future.error(error, stackTrace);
       }
     } else {
       return _startServer();

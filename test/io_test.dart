@@ -37,7 +37,7 @@ main() {
       new Link.fromPath(testPath.append('dir_link')).createSync('dir_target');
       new Link.fromPath(testPath.append('broken_link'))
           .createSync('broken_target');
-      
+
       var results = [];
 
       visitDirectory(testDir, (FileSystemEntity e) {
@@ -50,7 +50,7 @@ main() {
         } else {
           throw "bad";
         }
-        return new Future.immediate(true);
+        return new Future.value(true);
       }).then(expectAsync1((_) {
         var testPathFull = new File.fromPath(testPath).fullPathSync();
         var expectation = [
@@ -75,7 +75,7 @@ main() {
       var files = [];
       visitDirectory(testDir, (e) {
         files.add(e);
-        return new Future.immediate(!e.path.endsWith('dir2'));
+        return new Future.value(!e.path.endsWith('dir2'));
       }).then(expectAsync1((_) {
         expect(files.map((e) => e.path), unorderedEquals([
             "$testPath/dir",
@@ -91,7 +91,7 @@ main() {
       var files = [];
       visitDirectory(dir, (e) {
         files.add(e);
-        return new Future.immediate(true);
+        return new Future.value(true);
       }).then(expectAsync1((_) {
         expect(files.length, 1);
         expect(files.first.targetSync(), '../dir');

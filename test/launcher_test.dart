@@ -51,7 +51,7 @@ main() {
   test('no lockfile', () {
     var mockClient = new ClientMock();
     var mockProcess = new ProcessMock();
-    mockClient.when(callsTo('build')).thenReturn(new Future.immediate(true));
+    mockClient.when(callsTo('build')).thenReturn(new Future.value(true));
     int port;
 
     var launcher = new Launcher(
@@ -60,7 +60,7 @@ main() {
           port = p;
           return mockClient;
         },
-        runScript: (exe, args) => new Future.immediate(mockProcess));
+        runScript: (exe, args) => new Future.value(mockProcess));
 
     launcher.run().then(expectAsync1((s) {
       expect(s, true);
@@ -72,7 +72,7 @@ main() {
 
   test('lockfile', () {
     var mockClient = new ClientMock();
-    mockClient.when(callsTo('build')).thenReturn(new Future.immediate(true));
+    mockClient.when(callsTo('build')).thenReturn(new Future.value(true));
     int port;
 
 //    print(new Directory.current().path);

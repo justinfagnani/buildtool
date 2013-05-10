@@ -19,12 +19,18 @@ import 'mock_task.dart';
 
 
 // TODO: use addStream();
-class MockConsumer<S, T> implements StreamConsumer<S, T> {
+class MockConsumer<S> implements StreamConsumer<S> {
   List<S> data = <S>[];
-  Future<T> consume(Stream<S> stream) {
+
+  Future addStream(Stream<S> stream) {
     var completer = new Completer();
     stream.listen(data.add, onDone: () => completer.complete(null));
     return completer.future;
+  }
+
+  Future close() {
+    print("close");
+    return new Future.value();
   }
 }
 

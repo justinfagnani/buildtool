@@ -24,7 +24,7 @@ class MockTask extends Task {
   MockTask(String name) : super(name);
 
   /**
-   * Returns a [BuildResult] with:
+   * Returns a [TaskResult] with:
    * * `outputs` are input files paths
    * * `mappings` with all inputs mapped to their output
    * * A single message of `'message'`
@@ -52,7 +52,7 @@ class MockTask extends Task {
       outFiles.add(outPath.toString());
     }
     _logger.info("MockTask.run finished");
-    return new Future.immediate(
+    return new Future.value(
         new TaskResult(true, outFiles, mappings, ['message']));
   }
 }

@@ -23,8 +23,7 @@ class FutureGroup<E> {
   /**
    * Wait for [task] to complete.
    *
-   * If this group has already been marked as completed, you'll get a
-   * [FutureAlreadyCompleteException].
+   * If this group has already been marked as completed, you'll get a exception.
    *
    * If this group has a [failedTask], new tasks will be ignored, because the
    * error has already been signaled.

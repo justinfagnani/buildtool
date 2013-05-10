@@ -33,21 +33,21 @@ class Builder {
 
   /**
    * Create a new Builder instance.
-   * 
+   *
    * [buildDir], [genDir] and [deployDir] are relative to [basePath], unless
    * they are absolute. [basePath] defaults to the current working directory if
    * not specified.
    */
   Builder(Path buildDir, Path genDir, Path deployDir, {Path basePath})
       : basePath = (basePath == null)
-            ? new Path(new Directory.current().path)
+            ? new Path(Directory.current.path)
             : basePath {
-              
-    this.buildDir = (buildDir.isAbsolute) 
+
+    this.buildDir = (buildDir.isAbsolute)
         ? buildDir : this.basePath.join(buildDir);
     this.genDir = (genDir.isAbsolute) ? genDir : this.basePath.join(genDir);
     this.outDir = this.buildDir.append(OUT_DIR);
-    this.deployDir = (deployDir.isAbsolute) 
+    this.deployDir = (deployDir.isAbsolute)
         ? deployDir : this.buildDir.join(deployDir);
   }
 
@@ -146,24 +146,24 @@ class Builder {
         var futureGroup = new FutureGroup();
         var completer = new Completer();
         futureGroup.add(completer.future);
-        
+
         visitDirectory(new Directory.fromPath(outDir), (e) {
           var relativePath = new Path(e.path).relativeTo(outDir);
           var newPath = deployDir.join(relativePath);
-          
+
           if (e is File) {
             _logger.fine("copying file ${e.path} to $newPath");
             // copy file
             new File.fromPath(newPath).writeAsBytesSync(e.readAsBytesSync());
             return new Future.immediate(false);
-            
+
           } else if (e is Directory) {
             _logger.fine("copying dir ${e.path} to $newPath");
             // TODO(justinfagnani): skip dev-only package dependcies
             var copy = new Directory.fromPath(newPath);
             copy.createSync();
             return new Future.immediate(true);
-            
+
           } else if (e is Link) {
             var target = e.targetSync();
             var linkType = FileSystemEntity.typeSync(target, followLinks:true);
@@ -185,7 +185,7 @@ class Builder {
             var relativeLinkPath = new Path(e.path).relativeTo(outDir);
             // the relative path within the source directory
             var relativeTargetPath = _getRelativePath(target);
-            
+
             // if they're the same, then it's a link to an original dir and we
             // should recurse to copy the subtree. If they're different it's an
             // internal link (link within the project) and we should replicate
@@ -193,7 +193,7 @@ class Builder {
             if (relativeLinkPath.toString() == relativeTargetPath.toString()
                 || !targetInProject) {
               var copy = new Directory.fromPath(newPath);
-              copy.createSync();   
+              copy.createSync();
               return new Future.immediate(true); // recurse
             } else {
               _logger.fine("skipping internal link: $e\n"
@@ -207,7 +207,7 @@ class Builder {
         });
       });
   }
-  
+
   /**
    * Runs each task with the set of files that match it's glob entries. After
    * the tasks are run, their outputs are added to the set of changed files, in
@@ -276,7 +276,7 @@ class Builder {
         .then((_) {
           _logger.info("Running ${task.name} on $files");
           return task.run(files, basePath, taskOutDir, genDir)
-              .catchError((AsyncError e) {
+              .catchError((e) {
                 _logger.severe("Error running task ${task.name}: $e");
                 throw e;
               });
@@ -303,16 +303,16 @@ class Builder {
   Future _symlinkSources(Path inDir, Path outDir) {
     inDir = inDir == null ? basePath : inDir;
     if (!inDir.isAbsolute) {
-      inDir = new Path(new Directory.current().path).join(inDir);
+      inDir = new Path(Directory.current.path).join(inDir);
     }
     _logger.fine("symlinking sources from $inDir to $outDir");
 
     return visitDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
       if (!isValidInputFile(relativePath.toString())) {
-        return new Future.immediate(false);
+        return new Future.value(false);
       }
-      
+
       if (e is File) {
         var linkPath = outDir.join(relativePath);
         var file = new File.fromPath(linkPath);
@@ -328,9 +328,9 @@ class Builder {
           return new Link.fromPath(linkPath).create(e.path)
               .then((_) => true);
         }
-        
+
       } else if (e is Link) {
-        var target = e.targetSync(); 
+        var target = e.targetSync();
         if (target != null) {
           var relativePath = new Path(e.path).relativeTo(inDir);
           var linkPath = outDir.join(relativePath);
@@ -346,7 +346,7 @@ class Builder {
           }
         }
       }
-      return new Future.immediate(false);
+      return new Future.value(false);
     });
   }
 
@@ -363,7 +363,7 @@ class Builder {
       return create.then((_) {
         // create pub symlink
         var linkPath = buildDirPath.append(PACKAGES);
-        var linkType = FileSystemEntity.typeSync(linkPath.toNativePath(), 
+        var linkType = FileSystemEntity.typeSync(linkPath.toNativePath(),
             followLinks: true);
         if (linkType != FileSystemEntityType.DIRECTORY) {
           if (linkType != FileSystemEntityType.NOT_FOUND) {
@@ -401,13 +401,13 @@ class Builder {
     return visitDirectory(new Directory.fromPath(basePath), (e) {
       var relativePath = new Path(e.path).relativeTo(basePath);
       if (!isValidInputFile(relativePath.toString())) {
-        return new Future.immediate(false);
+        return new Future.value(false);
       }
       if (e is File) {
         files.add(_toString(new Path(e.path).relativeTo(basePath)));
-        return new Future.immediate(false);
+        return new Future.value(false);
       } else {
-        return new Future.immediate(!e.path.endsWith(PACKAGES));
+        return new Future.value(!e.path.endsWith(PACKAGES));
       }
     }).then((_) => files);
   }
@@ -444,6 +444,6 @@ class _Rule {
 
   bool shouldRunOn(String filename) =>
       patterns.any((p) => p.hasMatch(filename));
-  
+
   String toString() => "${task.name} $patterns";
 }

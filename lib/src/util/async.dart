@@ -24,5 +24,5 @@ Future _reduceAsync(Iterator iterator, currentValue,
     return combine(currentValue, iterator.current).then((result) =>
         _reduceAsync(iterator, result, combine));
   }
-  return new Future.immediate(currentValue);
+  return new Future.value(currentValue);
 }

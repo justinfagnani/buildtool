@@ -64,6 +64,7 @@ import 'package:buildtool/src/client.dart';
 import 'package:buildtool/src/common.dart';
 import 'package:buildtool/src/launcher.dart';
 import 'package:buildtool/src/server.dart';
+import 'package:buildtool/glob.dart';
 import 'package:buildtool/task.dart';
 import 'package:logging/logging.dart';
 
@@ -77,7 +78,7 @@ Builder _builder;
  * Adds a new [Task] to this build which is run when files match against the
  * [Glob] patterns in [files].
  *
- * [addTule] can only be called from within the closure passed to [configure].
+ * [addRule] can only be called from within the closure passed to [configure].
  */
 Task addRule(String name, Task task, List<String> files) {
   if (!_inConfigure) {
@@ -90,7 +91,7 @@ Task addRule(String name, Task task, List<String> files) {
 final Logger _logger = new Logger('buildtool');
 
 /**
- * Configures the build. In [configClosure], [addTask] can be called to add
+ * Configures the build. In [configClosure], [addRule] can be called to add
  * tasks to the build.
  *
  * [forceServer] is for debug and development purposes.

@@ -31,16 +31,13 @@ typedef void F(bool b, bool a(String s));
 /**
  * Lists the sub-directories and files of this Directory. Optionally recurses
  * into sub-directories based on the return value of [visit].
- * [visit] is called with a [File], [Directory] or [Symlink] to a directory,
+ * [visit] is called with a [File], [Directory] or [Link] to a directory,
  * never a Symlink to a File. If [visit] returns true, then it's argument is
  * listed recursively.
- *
- * Please see [Symlink], which is a [FileSystemEntity] subclass that this
- * library introduces.
  */
 Future visitDirectory(Directory dir, Future<bool> visit(FileSystemEntity f)) {
   var futureGroup = new FutureGroup();
-  
+
   void _list(Directory dir) {
     var completer = new Completer();
     futureGroup.add(completer.future);
@@ -51,8 +48,8 @@ Future visitDirectory(Directory dir, Future<bool> visit(FileSystemEntity f)) {
         futureGroup.add(future.then((bool recurse) {
           // recurse on directories, but not cyclic symlinks
           if (entity is! File && recurse == true) {
-            if (entity is Link) { 
-              if (FileSystemEntity.typeSync(entity.path, followLinks: true) == 
+            if (entity is Link) {
+              if (FileSystemEntity.typeSync(entity.path, followLinks: true) ==
                     FileSystemEntityType.DIRECTORY) {
                 var fullPath = getFullPath(entity.path).toString();
                 var dirFullPath = getFullPath(dir.path).toString();
@@ -70,7 +67,7 @@ Future visitDirectory(Directory dir, Future<bool> visit(FileSystemEntity f)) {
     onDone: () {
       completer.complete(null);
     },
-    unsubscribeOnError: true);
+    cancelOnError: true);
   }
   _list(dir);
 
