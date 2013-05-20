@@ -113,7 +113,7 @@ void configure(void configClosure(), {bool forceServer: false,
   // baseDir is where build.dart, source files and .buildlock are located.
   var baseDir = new Path(new Options().script).directoryPath;
   if (baseDir.toString() == '') {
-    baseDir = new Path(new Directory.current().path);
+    baseDir = new Path(Directory.current.path);
   }
   if (_isServer == true) {
     var server = new Server((Builder builder) {

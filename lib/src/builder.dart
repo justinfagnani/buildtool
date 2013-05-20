@@ -155,20 +155,20 @@ class Builder {
             _logger.fine("copying file ${e.path} to $newPath");
             // copy file
             new File.fromPath(newPath).writeAsBytesSync(e.readAsBytesSync());
-            return new Future.immediate(false);
+            return new Future.value(false);
 
           } else if (e is Directory) {
             _logger.fine("copying dir ${e.path} to $newPath");
             // TODO(justinfagnani): skip dev-only package dependcies
             var copy = new Directory.fromPath(newPath);
             copy.createSync();
-            return new Future.immediate(true);
+            return new Future.value(true);
 
           } else if (e is Link) {
             var target = e.targetSync();
             var linkType = FileSystemEntity.typeSync(target, followLinks:true);
             if (linkType == FileSystemEntityType.NOT_FOUND) {
-              return new Future.immediate(false);
+              return new Future.value(false);
             }
             /* There are 3 cases of symlinks in build_out/out:
                  1) A symlink to a file in the source tree at the same relative
@@ -194,7 +194,7 @@ class Builder {
                 || !targetInProject) {
               var copy = new Directory.fromPath(newPath);
               copy.createSync();
-              return new Future.immediate(true); // recurse
+              return new Future.value(true); // recurse
             } else {
               _logger.fine("skipping internal link: $e\n"
                     "  $relativeTargetPath $relativeLinkPath");
@@ -232,7 +232,7 @@ class Builder {
       if (matches.isEmpty) {
         // don't run the current task if we have no files to operate on
         _logger.info("Rule $rule matches no files.");
-        return new Future.immediate(buildResult);
+        return new Future.value(buildResult);
       }
 
       var task = rule.task;
@@ -266,6 +266,8 @@ class Builder {
         });
     }).then((buildResult) {
       return _symlinkSources(prevOutDir, outDir).then((_) => buildResult);
+    }).catchError((e) {
+      _logger.severe("build failed");
     });
   }
 
@@ -309,7 +311,9 @@ class Builder {
 
     return visitDirectory(new Directory.fromPath(inDir), (e) {
       var relativePath = new Path(e.path).relativeTo(inDir);
+      _logger.finer("visiting $relativePath");
       if (!isValidInputFile(relativePath.toString())) {
+        _logger.finer("  not valid input file");
         return new Future.value(false);
       }
 
@@ -321,6 +325,7 @@ class Builder {
               .then((_) => false);
         }
       } else if (e is Directory) {
+        _logger.finer("  directory");
         var linkPath = outDir.join(relativePath);
         var dir = new Directory.fromPath(linkPath);
 
@@ -328,6 +333,7 @@ class Builder {
           return new Link.fromPath(linkPath).create(e.path)
               .then((_) => true);
         }
+        return new Future.value(true);
 
       } else if (e is Link) {
         var target = e.targetSync();
@@ -359,7 +365,7 @@ class Builder {
     var dir = new Directory.fromPath(buildDirPath);
 
     return dir.exists().then((exists) {
-      var create = (exists) ? new Future.immediate(true) : dir.create();
+      var create = (exists) ? new Future.value(true) : dir.create();
       return create.then((_) {
         // create pub symlink
         var linkPath = buildDirPath.append(PACKAGES);
@@ -372,7 +378,7 @@ class Builder {
           var targetPath = new File(PACKAGES).fullPathSync();
           return new Link.fromPath(linkPath).create(targetPath);
         } else {
-          return new Future.immediate(null);
+          return new Future.value(null);
         }
       });
     });
@@ -383,7 +389,7 @@ class Builder {
     var dir = new Directory.fromPath(buildDirPath);
     return dir.exists().then((exists) =>
         (exists)
-            ? new Future.immediate(true)
+            ? new Future.value(true)
             : dir.create().then((_) => true));
   }
 
@@ -393,7 +399,7 @@ class Builder {
     return dir.exists().then((exists) =>
         (exists)
             ? dir.delete(recursive: true).then((_) => true)
-            : new Future.immediate(false));
+            : new Future.value(false));
   }
 
   Future<Iterable<String>> _getAllFiles() {

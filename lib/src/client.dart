@@ -64,23 +64,31 @@ class Client {
     var filteredFiles = changedFiles.where(isValidInputFile).toList();
     if (machine && filteredFiles.isEmpty) {
       _logger.info("no changed files");
-      return new Future.immediate(true);
+      return new Future.value(true);
     } else {
-      return _sendBuildCommand(filteredFiles, clean, deploy).then((Map result) {
-        List<Map<String, String>> mappingList = result['mappings'];
-        for (var mapping in mappingList) {
-          var message = stringify([{
-            'method': 'mapping',
-            'params': {
-              'from': mapping['from'],
-              'to': mapping['to'],
-            },
-          }]);
-          // write message for the Editor to receive
-          _outputSink.write("$message\n");
-          return true;
-        }
-      });
+      return _sendBuildCommand(filteredFiles, clean, deploy)
+        .then((Map result) {
+          return new Future(() {
+            _logger.info("foo");
+            return result;
+          });
+        })
+        .then((Map result) {
+          assert(result != null);
+          List<Map<String, String>> mappingList = result['mappings'];
+          for (var mapping in mappingList) {
+            var message = stringify([{
+              'method': 'mapping',
+              'params': {
+                'from': mapping['from'],
+                'to': mapping['to'],
+              },
+            }]);
+            // write message for the Editor to receive
+            _outputSink.write("$message\n");
+            return true;
+          }
+        });
     }
   }
 
@@ -110,8 +118,9 @@ class Client {
     http.Client client = httpClientFactory();
 
     // Setup the request
-    var uri = new Uri.fromComponents(scheme: 'http', domain: 'localhost',
+    var uri = new Uri.fromComponents(scheme: 'http', domain: '127.0.0.1',
         path: path, port: port);
+    _logger.fine("_sendJsonCommand: $uri\n  $data");
     var request = new http.Request('POST', uri);
     request.headers[HttpHeaders.CONTENT_TYPE] = JSON_TYPE.toString();
     if (data != null) {
@@ -120,12 +129,15 @@ class Client {
 
     // Send request and handle response
     return client.send(request).then((http.StreamedResponse response) {
+      print("response = $response");
       return response.stream.bytesToString().then((body) {
+        _logger.info("response body = $body");
         client.close();
         return parse(body);
       });
     }).catchError((e) {
-      _logger.severe("error: $e");
+      var st = getAttachedStackTrace(e);
+      _logger.severe("error: $e\n$st");
       client.close();
       // Call the error handler and possibly retry the request
       if (_connectionErrorHandler != null) {

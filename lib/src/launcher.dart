@@ -65,13 +65,16 @@ class Launcher {
     return _getServerPort().then((port) {
       var client = _clientFactory(port);
       client.onConnectionError = (e) {
-        if (e is SocketIOException &&
-            e.osError.errorCode == _CONNECTION_REFUSED &&
-            retryCount < 1) {
-          return _startServer().then((port) {
-            _logger.fine("restarted server on port $port");
-            return port;
-          });
+        if (e is SocketIOException) {
+          _logger.info("SocketIOException: ${e.osError}");
+          if (e.osError != null &&
+              e.osError.errorCode == _CONNECTION_REFUSED &&
+              retryCount < 1) {
+            return _startServer().then((port) {
+              _logger.fine("restarted server on port $port");
+              return port;
+            });
+          }
         }
       };
       if (quit == true) {
@@ -122,7 +125,7 @@ class Launcher {
 
   // set to false in development to be able to see output from the server when
   // running the build script manually
-  final bool detachServer = true;
+//  final bool detachServer = true;
 
   Future<int> _startServer() {
     _logger.info("Starting build server");
