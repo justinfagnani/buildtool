@@ -38,7 +38,7 @@ main() {
     checkDirectory('test/data/packages');
     checkFile('test/data/test.html');
     checkFile('test/data/test.txt');
-    checkFile('test/data/.buildlock', exists: false);
+    checkFile('test/data/.buildlock', exists: false);    
   });
 
   tearDown(() {

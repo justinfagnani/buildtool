@@ -166,36 +166,43 @@ class Builder {
 
           } else if (e is Link) {
             var target = e.targetSync();
-            var linkType = FileSystemEntity.typeSync(target, followLinks:true);
+            var linkType = FileSystemEntity.typeSync(target, followLinks: true);
             if (linkType == FileSystemEntityType.NOT_FOUND) {
               return new Future.value(false);
             }
-            /* There are 3 cases of symlinks in build_out/out:
-                 1) A symlink to a file in the source tree at the same relative
-                    location. This represent a normal source file. Copy it,
-                    recurse.
-                 2) A symlink to a file outside the source tree, mostly likely
-                    a package. This is a depdency, copy it. Recurse.
-                 3) A symlink to a file in the source tree at a different
-                    relative location, usually a packages symlink. This is an
-                    internal link, so replicate it. Don't recurse.
-             */
+            // There are 3 cases of symlinks in build_out/out:
+            //  1. A symlink to a file in the source tree at the same relative
+            //     location. This represent a normal source file or directory.
+            //     Copy it and recurse.
+            //  2. A symlink to a file outside the source tree, mostly likely
+            //     a package. This is a dependency, copy it and recurse.
+            //  3. A symlink to a file in the source tree at a different
+            //     relative location, usually a packages symlink. This is an
+            //     internal link, so replicate it. Don't recurse.
+            
+            // Whether the target is in the source tree
             bool targetInProject = target.startsWith(basePath.toString());
-            // the relative path within the out directory
+            
+            // The relative path within the out directory
             var relativeLinkPath = new Path(e.path).relativeTo(outDir);
-            // the relative path within the source directory
+            
+            // The relative path within the source directory
             var relativeTargetPath = _getRelativePath(target);
-
-            // if they're the same, then it's a link to an original dir and we
-            // should recurse to copy the subtree. If they're different it's an
-            // internal link (link within the project) and we should replicate
-            // the link, but not recurse. This applies to all packages symlinks.
+            
+            // If the relative paths are the same, and the target is in the
+            // source tree, then it's a link to an original dir in the source
+            // tree (case #1) and we should recurse to copy the subtree.
+            // If the relative paths are different it's an internal link (case 
+            // #3) and we should replicate the link, but not recurse.
+            // This applies to all packages symlinks.
+            
             if (relativeLinkPath.toString() == relativeTargetPath.toString()
                 || !targetInProject) {
-              var copy = new Directory.fromPath(newPath);
-              copy.createSync();
+              // Case #1 and #1
+              new Directory.fromPath(newPath).createSync();
               return new Future.value(true); // recurse
             } else {
+              // Case #3
               _logger.fine("skipping internal link: $e\n"
                     "  $relativeTargetPath $relativeLinkPath");
               var future = new Link.fromPath(relativePath)
